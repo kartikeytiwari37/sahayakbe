@@ -75,7 +75,15 @@ public class SahayakTeacherService {
     private LiveConfig createTeacherConfig() {
         LiveConfig config = new LiveConfig(geminiModel);
         
-        // MINIMAL CONFIG - Test if basic setup works first
+        // Add system instruction for AI teacher behavior
+        if (systemInstruction != null && !systemInstruction.trim().isEmpty()) {
+            LiveConfig.Part instructionPart = new LiveConfig.Part(systemInstruction);
+            LiveConfig.SystemInstruction sysInstruction = new LiveConfig.SystemInstruction(Arrays.asList(instructionPart));
+            config.setSystemInstruction(sysInstruction);
+            logger.info("Added system instruction to teacher config: {}", systemInstruction.substring(0, Math.min(100, systemInstruction.length())) + "...");
+        }
+        
+        // Configure generation settings
         LiveConfig.GenerationConfig genConfig = new LiveConfig.GenerationConfig();
         genConfig.setResponseModalities("audio");
         
@@ -88,8 +96,6 @@ public class SahayakTeacherService {
         genConfig.setSpeechConfig(speechConfig);
         
         config.setGenerationConfig(genConfig);
-        
-        // NO TOOLS OR SYSTEM INSTRUCTION FOR NOW - test minimal config
         
         return config;
     }
