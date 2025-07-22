@@ -100,8 +100,19 @@ public class SahayakTeacherService {
         LiveConfig.GenerationConfig genConfig = new LiveConfig.GenerationConfig();
         genConfig.setResponseModalities(modality);
         
-        // Always include voice settings (needed for audio mode)
-        LiveConfig.PrebuiltVoiceConfig voiceConfig = new LiveConfig.PrebuiltVoiceConfig("Aoede");
+        // Configure voice settings optimized for Hindi accent
+        LiveConfig.PrebuiltVoiceConfig voiceConfig;
+        
+        // Try different voices for better Hindi accent
+        if ("audio".equals(modality)) {
+            // For audio responses, try voices that handle Hindi better
+            voiceConfig = new LiveConfig.PrebuiltVoiceConfig("Puck"); // Alternative voice
+            logger.info("Using 'Puck' voice for audio session (better for Hindi accent)");
+        } else {
+            voiceConfig = new LiveConfig.PrebuiltVoiceConfig("Aoede"); // Keep Aoede for text
+            logger.info("Using 'Aoede' voice for text session");
+        }
+        
         LiveConfig.VoiceConfig voice = new LiveConfig.VoiceConfig();
         voice.setPrebuiltVoiceConfig(voiceConfig);
         LiveConfig.SpeechConfig speechConfig = new LiveConfig.SpeechConfig();
