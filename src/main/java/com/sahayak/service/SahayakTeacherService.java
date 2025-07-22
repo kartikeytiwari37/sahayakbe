@@ -34,7 +34,10 @@ public class SahayakTeacherService {
     
     private final ObjectMapper objectMapper;
     private final ApplicationEventPublisher eventPublisher;
-    private final Map<String, GeminiLiveWebSocketClient> activeSessions = new ConcurrentHashMap<>();
+    
+    // Dual connection approach: separate connections for text and audio
+    private final Map<String, GeminiLiveWebSocketClient> textSessions = new ConcurrentHashMap<>();
+    private final Map<String, GeminiLiveWebSocketClient> audioSessions = new ConcurrentHashMap<>();
     
     public SahayakTeacherService(ObjectMapper objectMapper, ApplicationEventPublisher eventPublisher) {
         this.objectMapper = objectMapper;
@@ -43,36 +46,44 @@ public class SahayakTeacherService {
     
     public CompletableFuture<String> createTeacherSession() {
         String sessionId = UUID.randomUUID().toString();
-        logger.info("Creating new teacher session: {}", sessionId);
+        logger.info("Creating dual teacher sessions (text + audio): {}", sessionId);
         
         return CompletableFuture.supplyAsync(() -> {
             try {
-                GeminiLiveWebSocketClient client = new GeminiLiveWebSocketClient(
+                // Create TEXT connection
+                GeminiLiveWebSocketClient textClient = new GeminiLiveWebSocketClient(
                     geminiApiUrl, geminiApiKey, objectMapper, eventPublisher
                 );
+                textClient.connectAsync().get();
+                Thread.sleep(500);
                 
-                // Connect to Gemini Live API and wait for connection
-                client.connectAsync().get();
+                LiveConfig textConfig = createTeacherConfigWithModality("text");
+                textClient.sendSetupMessage(textConfig);
+                textSessions.put(sessionId, textClient);
+                logger.info("Text session created for: {}", sessionId);
                 
-                // Add a small delay to ensure connection is fully established
-                Thread.sleep(1000);
+                // Create AUDIO connection
+                GeminiLiveWebSocketClient audioClient = new GeminiLiveWebSocketClient(
+                    geminiApiUrl, geminiApiKey, objectMapper, eventPublisher
+                );
+                audioClient.connectAsync().get();
+                Thread.sleep(500);
                 
-                // Setup the AI teacher configuration
-                LiveConfig config = createTeacherConfig();
-                client.sendSetupMessage(config);
+                LiveConfig audioConfig = createTeacherConfigWithModality("audio");
+                audioClient.sendSetupMessage(audioConfig);
+                audioSessions.put(sessionId, audioClient);
+                logger.info("Audio session created for: {}", sessionId);
                 
-                activeSessions.put(sessionId, client);
-                logger.info("Teacher session created successfully: {}", sessionId);
-                
+                logger.info("Dual teacher sessions created successfully: {}", sessionId);
                 return sessionId;
             } catch (Exception e) {
-                logger.error("Failed to create teacher session", e);
-                throw new RuntimeException("Failed to create teacher session", e);
+                logger.error("Failed to create teacher sessions", e);
+                throw new RuntimeException("Failed to create teacher sessions", e);
             }
         });
     }
     
-    private LiveConfig createTeacherConfig() {
+    private LiveConfig createTeacherConfigWithModality(String modality) {
         LiveConfig config = new LiveConfig(geminiModel);
         
         // Add system instruction for AI teacher behavior
@@ -80,14 +91,16 @@ public class SahayakTeacherService {
             LiveConfig.Part instructionPart = new LiveConfig.Part(systemInstruction);
             LiveConfig.SystemInstruction sysInstruction = new LiveConfig.SystemInstruction(Arrays.asList(instructionPart));
             config.setSystemInstruction(sysInstruction);
-            logger.info("Added system instruction to teacher config: {}", systemInstruction.substring(0, Math.min(100, systemInstruction.length())) + "...");
+            logger.info("Added system instruction to {} config: {}", modality, systemInstruction.substring(0, Math.min(100, systemInstruction.length())) + "...");
+        } else {
+            logger.warn("No system instruction found for {} config!", modality);
         }
         
-        // Configure generation settings
+        // Configure generation settings with specified modality
         LiveConfig.GenerationConfig genConfig = new LiveConfig.GenerationConfig();
-        genConfig.setResponseModalities("audio");
+        genConfig.setResponseModalities(modality);
         
-        // Configure voice settings
+        // Always include voice settings (needed for audio mode)
         LiveConfig.PrebuiltVoiceConfig voiceConfig = new LiveConfig.PrebuiltVoiceConfig("Aoede");
         LiveConfig.VoiceConfig voice = new LiveConfig.VoiceConfig();
         voice.setPrebuiltVoiceConfig(voiceConfig);
@@ -97,81 +110,117 @@ public class SahayakTeacherService {
         
         config.setGenerationConfig(genConfig);
         
+        logger.debug("Created {} config with responseModalities: {}", modality, modality);
         return config;
     }
     
     public void sendAudioToTeacher(String sessionId, String base64AudioData) {
-        GeminiLiveWebSocketClient client = activeSessions.get(sessionId);
-        if (client != null && client.isOpen()) {
-            logger.debug("Sending audio data to teacher session: {}", sessionId);
-            client.sendAudioData(base64AudioData);
+        GeminiLiveWebSocketClient audioClient = audioSessions.get(sessionId);
+        if (audioClient != null && audioClient.isOpen()) {
+            logger.debug("Sending audio data to AUDIO session: {}", sessionId);
+            audioClient.sendAudioData(base64AudioData);
         } else {
-            logger.warn("Teacher session not found or closed: {}", sessionId);
-            throw new RuntimeException("Teacher session not available: " + sessionId);
+            logger.warn("Audio session not found or closed: {}", sessionId);
+            throw new RuntimeException("Audio session not available: " + sessionId);
         }
     }
     
     public void sendVideoToTeacher(String sessionId, String base64VideoData) {
-        GeminiLiveWebSocketClient client = activeSessions.get(sessionId);
-        if (client != null && client.isOpen()) {
-            logger.debug("Sending video data to teacher session: {}", sessionId);
-            client.sendVideoData(base64VideoData);
+        // Send video to text session (will get text response)
+        GeminiLiveWebSocketClient textClient = textSessions.get(sessionId);
+        if (textClient != null && textClient.isOpen()) {
+            logger.debug("Sending video data to TEXT session: {}", sessionId);
+            textClient.sendVideoData(base64VideoData);
         } else {
-            logger.warn("Teacher session not found or closed: {}", sessionId);
-            throw new RuntimeException("Teacher session not available: " + sessionId);
+            logger.warn("Text session not found or closed: {}", sessionId);
+            throw new RuntimeException("Text session not available: " + sessionId);
         }
     }
     
     public void sendTextToTeacher(String sessionId, String text) {
-        GeminiLiveWebSocketClient client = activeSessions.get(sessionId);
-        if (client != null && client.isOpen()) {
-            logger.info("Sending text to teacher session {}: {}", sessionId, text);
-            client.sendTextMessage(text);
+        GeminiLiveWebSocketClient textClient = textSessions.get(sessionId);
+        if (textClient != null && textClient.isOpen()) {
+            logger.info("Sending text to TEXT session {}: {}", sessionId, text);
+            textClient.sendTextMessage(text);
         } else {
-            logger.warn("Teacher session not found or closed: {}", sessionId);
-            throw new RuntimeException("Teacher session not available: " + sessionId);
+            logger.warn("Text session not found or closed: {}", sessionId);
+            throw new RuntimeException("Text session not available: " + sessionId);
         }
     }
     
     public void setAudioHandler(String sessionId, java.util.function.Consumer<String> audioHandler) {
-        GeminiLiveWebSocketClient client = activeSessions.get(sessionId);
-        if (client != null) {
-            client.setAudioDataHandler(audioHandler);
+        GeminiLiveWebSocketClient audioClient = audioSessions.get(sessionId);
+        if (audioClient != null) {
+            audioClient.setAudioDataHandler(audioHandler);
         }
     }
     
     public void setContentHandler(String sessionId, java.util.function.Consumer<String> contentHandler) {
-        GeminiLiveWebSocketClient client = activeSessions.get(sessionId);
-        if (client != null) {
-            client.setContentHandler(contentHandler);
+        // Set content handler for both sessions
+        GeminiLiveWebSocketClient textClient = textSessions.get(sessionId);
+        if (textClient != null) {
+            textClient.setContentHandler(contentHandler);
+        }
+        
+        GeminiLiveWebSocketClient audioClient = audioSessions.get(sessionId);
+        if (audioClient != null) {
+            audioClient.setContentHandler(contentHandler);
         }
     }
     
     public void setErrorHandler(String sessionId, java.util.function.Consumer<String> errorHandler) {
-        GeminiLiveWebSocketClient client = activeSessions.get(sessionId);
-        if (client != null) {
-            client.setErrorHandler(errorHandler);
+        // Set error handler for both sessions
+        GeminiLiveWebSocketClient textClient = textSessions.get(sessionId);
+        if (textClient != null) {
+            textClient.setErrorHandler(errorHandler);
+        }
+        
+        GeminiLiveWebSocketClient audioClient = audioSessions.get(sessionId);
+        if (audioClient != null) {
+            audioClient.setErrorHandler(errorHandler);
         }
     }
     
     public void closeTeacherSession(String sessionId) {
-        GeminiLiveWebSocketClient client = activeSessions.remove(sessionId);
-        if (client != null) {
-            logger.info("Closing teacher session: {}", sessionId);
-            client.close();
+        logger.info("Closing dual teacher sessions: {}", sessionId);
+        
+        // Close text session
+        GeminiLiveWebSocketClient textClient = textSessions.remove(sessionId);
+        if (textClient != null) {
+            textClient.close();
+        }
+        
+        // Close audio session
+        GeminiLiveWebSocketClient audioClient = audioSessions.remove(sessionId);
+        if (audioClient != null) {
+            audioClient.close();
         }
     }
     
     public boolean isSessionActive(String sessionId) {
-        GeminiLiveWebSocketClient client = activeSessions.get(sessionId);
-        return client != null && client.isOpen();
+        GeminiLiveWebSocketClient textClient = textSessions.get(sessionId);
+        GeminiLiveWebSocketClient audioClient = audioSessions.get(sessionId);
+        
+        boolean textActive = textClient != null && textClient.isOpen();
+        boolean audioActive = audioClient != null && audioClient.isOpen();
+        
+        return textActive && audioActive; // Both should be active
     }
     
     public Map<String, String> getActiveSessionsStatus() {
         Map<String, String> status = new HashMap<>();
-        activeSessions.forEach((sessionId, client) -> {
-            status.put(sessionId, client.isOpen() ? "ACTIVE" : "CLOSED");
+        
+        // Check all session IDs from both maps
+        textSessions.keySet().forEach(sessionId -> {
+            boolean textActive = textSessions.get(sessionId) != null && textSessions.get(sessionId).isOpen();
+            boolean audioActive = audioSessions.get(sessionId) != null && audioSessions.get(sessionId).isOpen();
+            
+            String sessionStatus = String.format("TEXT:%s, AUDIO:%s", 
+                textActive ? "ACTIVE" : "CLOSED", 
+                audioActive ? "ACTIVE" : "CLOSED");
+            status.put(sessionId, sessionStatus);
         });
+        
         return status;
     }
 }

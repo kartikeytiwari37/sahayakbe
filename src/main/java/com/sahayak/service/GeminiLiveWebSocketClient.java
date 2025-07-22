@@ -106,11 +106,17 @@ public class GeminiLiveWebSocketClient extends WebSocketClient {
         if (jsonNode.has("serverContent")) {
             handleServerContent(jsonNode.get("serverContent"));
         } else {
-            logger.warn("Received message without serverContent: {}", message);
+            logger.debug("Received message without serverContent: {}", message);
         }
+        
+        // Log the entire message structure for debugging
+        logger.debug("Full message structure: {}", message);
     }
     
     private void handleServerContent(JsonNode serverContent) throws Exception {
+        // Log the entire serverContent for debugging
+        logger.debug("Processing serverContent: {}", serverContent.toString());
+        
         if (serverContent.has("interrupted") && serverContent.get("interrupted").asBoolean()) {
             logger.info("Conversation interrupted");
             return;
@@ -123,12 +129,19 @@ public class GeminiLiveWebSocketClient extends WebSocketClient {
         
         if (serverContent.has("modelTurn")) {
             JsonNode modelTurn = serverContent.get("modelTurn");
+            logger.debug("Processing modelTurn: {}", modelTurn.toString());
+            
             if (modelTurn.has("parts")) {
                 JsonNode parts = modelTurn.get("parts");
+                logger.debug("Processing parts: {}", parts.toString());
                 
                 StringBuilder textContent = new StringBuilder();
+                boolean hasAudio = false;
+                boolean hasText = false;
                 
                 for (JsonNode part : parts) {
+                    logger.debug("Processing part: {}", part.toString());
+                    
                     if (part.has("inlineData")) {
                         JsonNode inlineData = part.get("inlineData");
                         String mimeType = inlineData.get("mimeType").asText();
@@ -136,6 +149,7 @@ public class GeminiLiveWebSocketClient extends WebSocketClient {
                         
                         if (mimeType.startsWith("audio/pcm")) {
                             logger.info("Received audio data, size: {}", data.length());
+                            hasAudio = true;
                             if (audioDataHandler != null) {
                                 audioDataHandler.accept(data);
                             }
@@ -144,6 +158,9 @@ public class GeminiLiveWebSocketClient extends WebSocketClient {
                         String text = part.get("text").asText();
                         logger.info("Received text part: {}", text);
                         textContent.append(text);
+                        hasText = true;
+                    } else {
+                        logger.debug("Part has neither inlineData nor text: {}", part.toString());
                     }
                 }
                 
@@ -155,7 +172,14 @@ public class GeminiLiveWebSocketClient extends WebSocketClient {
                         contentHandler.accept(fullText);
                     }
                 }
+                
+                logger.debug("Message processed - hasAudio: {}, hasText: {}, textLength: {}", 
+                           hasAudio, hasText, textContent.length());
+            } else {
+                logger.debug("modelTurn has no parts");
             }
+        } else {
+            logger.debug("serverContent has no modelTurn");
         }
     }
     
