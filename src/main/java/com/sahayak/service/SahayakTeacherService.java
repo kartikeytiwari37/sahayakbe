@@ -39,6 +39,9 @@ public class SahayakTeacherService {
     private final Map<String, GeminiLiveWebSocketClient> textSessions = new ConcurrentHashMap<>();
     private final Map<String, GeminiLiveWebSocketClient> audioSessions = new ConcurrentHashMap<>();
     
+    // Track screen sharing state per session
+    private final Map<String, Boolean> screenSharingStates = new ConcurrentHashMap<>();
+    
     public SahayakTeacherService(ObjectMapper objectMapper, ApplicationEventPublisher eventPublisher) {
         this.objectMapper = objectMapper;
         this.eventPublisher = eventPublisher;
@@ -137,14 +140,14 @@ public class SahayakTeacherService {
     }
     
     public void sendVideoToTeacher(String sessionId, String base64VideoData) {
-        // Send video to text session (will get text response)
-        GeminiLiveWebSocketClient textClient = textSessions.get(sessionId);
-        if (textClient != null && textClient.isOpen()) {
-            logger.debug("Sending video data to TEXT session: {}", sessionId);
-            textClient.sendVideoData(base64VideoData);
+        // Send video to AUDIO session for proper multimodal processing (like Live API console)
+        GeminiLiveWebSocketClient audioClient = audioSessions.get(sessionId);
+        if (audioClient != null && audioClient.isOpen()) {
+            logger.debug("Sending video data to AUDIO session for multimodal processing: {}", sessionId);
+            audioClient.sendVideoData(base64VideoData);
         } else {
-            logger.warn("Text session not found or closed: {}", sessionId);
-            throw new RuntimeException("Text session not available: " + sessionId);
+            logger.warn("Audio session not found or closed: {}", sessionId);
+            throw new RuntimeException("Audio session not available: " + sessionId);
         }
     }
     

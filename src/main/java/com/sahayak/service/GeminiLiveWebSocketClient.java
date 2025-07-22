@@ -236,12 +236,13 @@ public class GeminiLiveWebSocketClient extends WebSocketClient {
     
     public void sendVideoData(String base64VideoData) {
         try {
+            // Use correct Live API format: realtimeInput with mediaChunks (like Live API console)
             MediaChunk videoChunk = new MediaChunk("image/jpeg", base64VideoData);
             RealtimeInput realtimeInput = new RealtimeInput(Arrays.asList(videoChunk));
             RealtimeInputMessage message = new RealtimeInputMessage(realtimeInput);
             
             String json = objectMapper.writeValueAsString(message);
-            logger.debug("Sending video data, size: {}", base64VideoData.length());
+            logger.debug("Sending video data as realtimeInput, size: {}", base64VideoData.length());
             send(json);
         } catch (Exception e) {
             logger.error("Error sending video data", e);

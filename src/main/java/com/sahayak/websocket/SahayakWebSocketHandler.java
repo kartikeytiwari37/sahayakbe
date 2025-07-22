@@ -107,7 +107,9 @@ public class SahayakWebSocketHandler implements WebSocketHandler {
                     
                 case "video":
                     String videoData = jsonNode.get("data").asText();
+                    logger.info("Received video message from {}, data size: {}", session.getId(), videoData.length());
                     teacherService.sendVideoToTeacher(teacherSessionId, videoData);
+                    logger.info("Video data forwarded to teacher session: {}", teacherSessionId);
                     break;
                     
                 case "text":
