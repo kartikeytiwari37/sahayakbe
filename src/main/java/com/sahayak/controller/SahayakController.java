@@ -53,6 +53,52 @@ public class SahayakController {
             });
     }
     
+    @PostMapping("/teacher/session/custom")
+    public CompletableFuture<ResponseEntity<Map<String, String>>> createCustomTeacherSession(
+            @RequestBody Map<String, String> request) {
+        
+        String customPrompt = request.get("customPrompt");
+        logger.info("Creating new custom teacher session with prompt: {}", 
+                   customPrompt != null ? customPrompt.substring(0, Math.min(100, customPrompt.length())) + "..." : "null");
+        
+        return teacherService.createTeacherSessionWithCustomPrompt(customPrompt)
+            .thenApply(sessionId -> {
+                Map<String, String> response = new HashMap<>();
+                response.put("sessionId", sessionId);
+                response.put("status", "created");
+                response.put("message", "Custom teacher session created successfully");
+                return ResponseEntity.ok(response);
+            })
+            .exceptionally(throwable -> {
+                logger.error("Failed to create custom teacher session", throwable);
+                Map<String, String> response = new HashMap<>();
+                response.put("status", "error");
+                response.put("message", "Failed to create custom teacher session: " + throwable.getMessage());
+                return ResponseEntity.internalServerError().body(response);
+            });
+    }
+    
+    @PostMapping("/teacher/prompt-creator")
+    public CompletableFuture<ResponseEntity<Map<String, String>>> createPromptCreatorSession() {
+        logger.info("Creating new prompt creator session via REST API");
+        
+        return teacherService.createPromptCreatorSession()
+            .thenApply(sessionId -> {
+                Map<String, String> response = new HashMap<>();
+                response.put("sessionId", sessionId);
+                response.put("status", "created");
+                response.put("message", "Prompt creator session created successfully");
+                return ResponseEntity.ok(response);
+            })
+            .exceptionally(throwable -> {
+                logger.error("Failed to create prompt creator session", throwable);
+                Map<String, String> response = new HashMap<>();
+                response.put("status", "error");
+                response.put("message", "Failed to create prompt creator session: " + throwable.getMessage());
+                return ResponseEntity.internalServerError().body(response);
+            });
+    }
+    
     @GetMapping("/teacher/session/{sessionId}/status")
     public ResponseEntity<Map<String, Object>> getSessionStatus(@PathVariable String sessionId) {
         Map<String, Object> response = new HashMap<>();
