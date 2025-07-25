@@ -2,6 +2,7 @@ package com.sahayak.service;
 
 import com.sahayak.model.ExamCreationRequest;
 import com.sahayak.model.ExamCreationResponse;
+import com.sahayak.service.strategy.ExamTypeStrategyFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -18,10 +19,12 @@ import java.util.List;
 public class MockExamCreationService extends ExamCreationService {
 
     private static final Logger logger = LoggerFactory.getLogger(MockExamCreationService.class);
+    private final ExamTypeStrategyFactory strategyFactory;
 
-    public MockExamCreationService() {
+    public MockExamCreationService(ExamTypeStrategyFactory strategyFactory) {
         // Call the parent constructor with null parameters since we won't be using them
-        super(null, null);
+        super(null, null, strategyFactory);
+        this.strategyFactory = strategyFactory;
     }
 
     @Override
@@ -29,8 +32,41 @@ public class MockExamCreationService extends ExamCreationService {
         logger.info("Creating mock exam with request: {}", request);
 
         try {
-            // Create a sample exam response based on the request
-            ExamCreationResponse.ExamData examData = createMockExamData(request);
+            // Create a sample exam response based on the request and exam type
+            ExamCreationResponse.ExamData examData;
+            
+            String examType = request.getExamType();
+            if (examType == null) {
+                examType = "MULTIPLE_CHOICE";
+            }
+            
+            // Normalize the exam type to handle different formats
+            String normalizedType = examType.toUpperCase().replace(" ", "_");
+            
+            switch (normalizedType) {
+                case "TRUE_FALSE":
+                    examData = createMockTrueFalseExamData(request);
+                    break;
+                case "ESSAY":
+                    // For now, we'll use multiple choice for essay type
+                    logger.info("Essay exam type is not fully implemented in mock service, using multiple choice");
+                    examData = createMockMultipleChoiceExamData(request);
+                    break;
+                case "MIXED":
+                    // For now, we'll use multiple choice for mixed type
+                    logger.info("Mixed exam type is not fully implemented in mock service, using multiple choice");
+                    examData = createMockMultipleChoiceExamData(request);
+                    break;
+                case "SHORT_ANSWER":
+                    // For now, we'll use multiple choice for short answer type
+                    logger.info("Short answer exam type is not fully implemented in mock service, using multiple choice");
+                    examData = createMockMultipleChoiceExamData(request);
+                    break;
+                case "MULTIPLE_CHOICE":
+                default:
+                    examData = createMockMultipleChoiceExamData(request);
+                    break;
+            }
             
             ExamCreationResponse response = new ExamCreationResponse("success", "Exam created successfully", examData);
             response.setRawResponse("This is a mock response. In a real implementation, this would be the raw response from the Gemini API.");
@@ -43,16 +79,16 @@ public class MockExamCreationService extends ExamCreationService {
     }
 
     /**
-     * Creates a mock exam data based on the request parameters
+     * Creates a mock multiple choice exam data based on the request parameters
      * 
      * @param request The exam creation request
      * @return The mock exam data
      */
-    private ExamCreationResponse.ExamData createMockExamData(ExamCreationRequest request) {
+    private ExamCreationResponse.ExamData createMockMultipleChoiceExamData(ExamCreationRequest request) {
         ExamCreationResponse.ExamData examData = new ExamCreationResponse.ExamData();
         examData.setSubject(request.getSubject());
         examData.setGradeLevel(request.getGradeLevel());
-        examData.setExamType(request.getExamType());
+        examData.setExamType("MULTIPLE_CHOICE");
         
         List<ExamCreationResponse.Question> questions = new ArrayList<>();
         
@@ -65,6 +101,36 @@ public class MockExamCreationService extends ExamCreationService {
             questions.addAll(createHistoryQuestions(request.getNumberOfQuestions()));
         } else {
             questions.addAll(createGenericQuestions(request.getNumberOfQuestions(), request.getSubject()));
+        }
+        
+        examData.setQuestions(questions);
+        
+        return examData;
+    }
+    
+    /**
+     * Creates a mock true/false exam data based on the request parameters
+     * 
+     * @param request The exam creation request
+     * @return The mock exam data
+     */
+    private ExamCreationResponse.ExamData createMockTrueFalseExamData(ExamCreationRequest request) {
+        ExamCreationResponse.ExamData examData = new ExamCreationResponse.ExamData();
+        examData.setSubject(request.getSubject());
+        examData.setGradeLevel(request.getGradeLevel());
+        examData.setExamType("TRUE_FALSE");
+        
+        List<ExamCreationResponse.Question> questions = new ArrayList<>();
+        
+        // Create sample true/false questions based on the subject
+        if ("Mathematics".equalsIgnoreCase(request.getSubject())) {
+            questions.addAll(createMathTrueFalseQuestions(request.getNumberOfQuestions()));
+        } else if ("Science".equalsIgnoreCase(request.getSubject())) {
+            questions.addAll(createScienceTrueFalseQuestions(request.getNumberOfQuestions()));
+        } else if ("History".equalsIgnoreCase(request.getSubject())) {
+            questions.addAll(createHistoryTrueFalseQuestions(request.getNumberOfQuestions()));
+        } else {
+            questions.addAll(createGenericTrueFalseQuestions(request.getNumberOfQuestions(), request.getSubject()));
         }
         
         examData.setQuestions(questions);
@@ -313,6 +379,215 @@ public class MockExamCreationService extends ExamCreationService {
             question.setOptions(Arrays.asList("Option A", "Option B", "Option C", "Option D"));
             question.setCorrectAnswer("Option A");
             question.setExplanation("This is a sample explanation for question " + i);
+            
+            questions.add(question);
+        }
+        
+        return questions;
+    }
+    
+    /**
+     * Creates sample math true/false questions
+     * 
+     * @param count The number of questions to create
+     * @return The list of questions
+     */
+    private List<ExamCreationResponse.Question> createMathTrueFalseQuestions(int count) {
+        List<ExamCreationResponse.Question> questions = new ArrayList<>();
+        
+        String[] questionTexts = {
+            "The value of π (pi) is exactly 3.14.",
+            "In a right-angled triangle, the square of the hypotenuse equals the sum of the squares of the other two sides.",
+            "The sum of the angles in a triangle is 180 degrees.",
+            "A prime number is a number that is only divisible by 1 and itself.",
+            "The square root of 4 is 2.",
+            "All squares are rectangles.",
+            "All rectangles are squares.",
+            "The product of any number and zero is zero.",
+            "The number 1 is a prime number.",
+            "The area of a circle is πr²."
+        };
+        
+        String[] correctAnswers = {
+            "False",
+            "True",
+            "True",
+            "True",
+            "True",
+            "True",
+            "False",
+            "True",
+            "False",
+            "True"
+        };
+        
+        String[] explanations = {
+            "The value of π is approximately 3.14159... and continues infinitely without repeating. It is an irrational number, not exactly 3.14.",
+            "This is the Pythagorean theorem, which states that in a right-angled triangle, a² + b² = c², where c is the hypotenuse.",
+            "The sum of the interior angles in any triangle is always 180 degrees.",
+            "A prime number is a natural number greater than 1 that is not a product of two smaller natural numbers.",
+            "The square root of 4 is indeed 2, because 2 × 2 = 4.",
+            "A square is a special type of rectangle where all sides are equal in length.",
+            "Not all rectangles are squares. A rectangle has four right angles, but its sides may not all be equal in length.",
+            "Any number multiplied by zero equals zero.",
+            "The number 1 is not considered a prime number. Prime numbers start from 2.",
+            "The formula for the area of a circle is A = πr², where r is the radius of the circle."
+        };
+        
+        // Create questions based on the count
+        for (int i = 0; i < Math.min(count, questionTexts.length); i++) {
+            ExamCreationResponse.Question question = new ExamCreationResponse.Question();
+            question.setQuestionText(questionTexts[i]);
+            question.setOptions(Arrays.asList("True", "False"));
+            question.setCorrectAnswer(correctAnswers[i]);
+            question.setExplanation(explanations[i]);
+            
+            questions.add(question);
+        }
+        
+        return questions;
+    }
+    
+    /**
+     * Creates sample science true/false questions
+     * 
+     * @param count The number of questions to create
+     * @return The list of questions
+     */
+    private List<ExamCreationResponse.Question> createScienceTrueFalseQuestions(int count) {
+        List<ExamCreationResponse.Question> questions = new ArrayList<>();
+        
+        String[] questionTexts = {
+            "The sun revolves around the Earth.",
+            "Humans use only 10% of their brains.",
+            "Water boils at 100 degrees Celsius at sea level.",
+            "Diamonds are made from compressed coal.",
+            "The human body has 206 bones.",
+            "Lightning never strikes the same place twice.",
+            "The Great Wall of China is visible from space with the naked eye.",
+            "The Earth's core is liquid.",
+            "Sound travels faster in water than in air.",
+            "Antibiotics can treat viral infections."
+        };
+        
+        String[] correctAnswers = {
+            "False",
+            "False",
+            "True",
+            "False",
+            "True",
+            "False",
+            "False",
+            "False",
+            "True",
+            "False"
+        };
+        
+        String[] explanations = {
+            "The Earth revolves around the Sun, not the other way around. This heliocentric model was proposed by Copernicus and confirmed by later astronomers.",
+            "This is a common myth. Humans use all of their brain, though not all at the same time.",
+            "At standard atmospheric pressure (sea level), water boils at 100 degrees Celsius (212 degrees Fahrenheit).",
+            "Diamonds form from carbon subjected to high pressure and temperature deep within the Earth's mantle, not directly from coal.",
+            "The adult human skeleton consists of 206 bones.",
+            "Lightning can and does strike the same place multiple times. Tall structures like the Empire State Building are struck multiple times each year.",
+            "The Great Wall of China is not visible from space with the naked eye. This is a common misconception.",
+            "The Earth's outer core is liquid, but the inner core is solid due to extreme pressure despite high temperatures.",
+            "Sound travels about 4.3 times faster in water than in air because water molecules are closer together than air molecules.",
+            "Antibiotics are effective against bacterial infections, not viral infections. Viruses require antiviral medications or vaccines."
+        };
+        
+        // Create questions based on the count
+        for (int i = 0; i < Math.min(count, questionTexts.length); i++) {
+            ExamCreationResponse.Question question = new ExamCreationResponse.Question();
+            question.setQuestionText(questionTexts[i]);
+            question.setOptions(Arrays.asList("True", "False"));
+            question.setCorrectAnswer(correctAnswers[i]);
+            question.setExplanation(explanations[i]);
+            
+            questions.add(question);
+        }
+        
+        return questions;
+    }
+    
+    /**
+     * Creates sample history true/false questions
+     * 
+     * @param count The number of questions to create
+     * @return The list of questions
+     */
+    private List<ExamCreationResponse.Question> createHistoryTrueFalseQuestions(int count) {
+        List<ExamCreationResponse.Question> questions = new ArrayList<>();
+        
+        String[] questionTexts = {
+            "The United States Declaration of Independence was signed in 1776.",
+            "Napoleon Bonaparte was born in France.",
+            "The Titanic sank on its maiden voyage in 1912.",
+            "The Berlin Wall fell in 1989.",
+            "Christopher Columbus was the first European to discover America.",
+            "The ancient Egyptians built the Stonehenge monument.",
+            "World War I began in 1914.",
+            "The Renaissance period began in Italy.",
+            "The Roman Empire fell in 476 CE.",
+            "The first human to walk on the moon was Neil Armstrong."
+        };
+        
+        String[] correctAnswers = {
+            "True",
+            "False",
+            "True",
+            "True",
+            "False",
+            "False",
+            "True",
+            "True",
+            "True",
+            "True"
+        };
+        
+        String[] explanations = {
+            "The United States Declaration of Independence was indeed signed in 1776, specifically on July 4, 1776.",
+            "Napoleon Bonaparte was born on the island of Corsica, which had been acquired by France from the Republic of Genoa just a year before his birth.",
+            "The RMS Titanic sank on its maiden voyage on April 15, 1912, after hitting an iceberg in the North Atlantic Ocean.",
+            "The Berlin Wall, which had divided East and West Berlin since 1961, fell on November 9, 1989.",
+            "Norse explorer Leif Erikson is believed to have reached North America around 500 years before Columbus. Additionally, indigenous peoples had been living in the Americas for thousands of years.",
+            "Stonehenge was built by prehistoric Britons, not ancient Egyptians. It is located in Wiltshire, England.",
+            "World War I began on July 28, 1914, following the assassination of Archduke Franz Ferdinand of Austria.",
+            "The Renaissance began in Florence, Italy in the late 13th century before spreading throughout Europe.",
+            "The Western Roman Empire fell in 476 CE when Romulus Augustus was deposed by Odoacer. The Eastern Roman Empire (Byzantine Empire) continued until 1453.",
+            "Neil Armstrong was indeed the first human to walk on the moon during the Apollo 11 mission on July 20, 1969."
+        };
+        
+        // Create questions based on the count
+        for (int i = 0; i < Math.min(count, questionTexts.length); i++) {
+            ExamCreationResponse.Question question = new ExamCreationResponse.Question();
+            question.setQuestionText(questionTexts[i]);
+            question.setOptions(Arrays.asList("True", "False"));
+            question.setCorrectAnswer(correctAnswers[i]);
+            question.setExplanation(explanations[i]);
+            
+            questions.add(question);
+        }
+        
+        return questions;
+    }
+    
+    /**
+     * Creates generic true/false questions for any subject
+     * 
+     * @param count The number of questions to create
+     * @param subject The subject of the questions
+     * @return The list of questions
+     */
+    private List<ExamCreationResponse.Question> createGenericTrueFalseQuestions(int count, String subject) {
+        List<ExamCreationResponse.Question> questions = new ArrayList<>();
+        
+        for (int i = 1; i <= count; i++) {
+            ExamCreationResponse.Question question = new ExamCreationResponse.Question();
+            question.setQuestionText("Sample " + subject + " true/false statement " + i);
+            question.setOptions(Arrays.asList("True", "False"));
+            question.setCorrectAnswer(i % 2 == 0 ? "True" : "False");
+            question.setExplanation("This is a sample explanation for statement " + i);
             
             questions.add(question);
         }

@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sahayak.model.ExamCreationRequest;
 import com.sahayak.model.ExamCreationResponse;
+import com.sahayak.service.strategy.ExamTypeStrategy;
+import com.sahayak.service.strategy.ExamTypeStrategyFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -28,13 +30,15 @@ public class ExamCreationService {
 
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
+    private final ExamTypeStrategyFactory strategyFactory;
 
     // REST API endpoint for Gemini (not WebSocket)
     private static final String GEMINI_REST_API_URL = "https://generativelanguage.googleapis.com/v1beta/";
 
-    public ExamCreationService(RestTemplate restTemplate, ObjectMapper objectMapper) {
+    public ExamCreationService(RestTemplate restTemplate, ObjectMapper objectMapper, ExamTypeStrategyFactory strategyFactory) {
         this.restTemplate = restTemplate;
         this.objectMapper = objectMapper;
+        this.strategyFactory = strategyFactory;
     }
 
     /**
@@ -47,16 +51,19 @@ public class ExamCreationService {
         try {
             logger.info("Creating exam with request: {}", request);
 
-            // Create the prompt for the LLM
-            String prompt = createExamPrompt(request);
+            // Get the appropriate strategy for the exam type
+            ExamTypeStrategy strategy = strategyFactory.createStrategy(request.getExamType());
+
+            // Create the prompt for the LLM using the strategy
+            String prompt = strategy.createExamPrompt(request);
             logger.debug("Generated prompt: {}", prompt);
 
             // Call the Gemini API
             String llmResponse = callGeminiApi(prompt);
             logger.debug("Raw LLM response: {}", llmResponse);
 
-            // Parse the response
-            ExamCreationResponse response = parseResponse(llmResponse, request);
+            // Parse the response using the strategy
+            ExamCreationResponse response = parseResponse(llmResponse, request, strategy);
             response.setRawResponse(llmResponse);
             
             return response;
@@ -64,48 +71,6 @@ public class ExamCreationService {
             logger.error("Error creating exam", e);
             return new ExamCreationResponse("error", "Failed to create exam: " + e.getMessage());
         }
-    }
-
-    /**
-     * Creates a prompt for the LLM based on the request parameters
-     * 
-     * @param request The exam creation request
-     * @return The prompt for the LLM
-     */
-    private String createExamPrompt(ExamCreationRequest request) {
-        StringBuilder promptBuilder = new StringBuilder();
-
-        // Generic exam creation prompt
-        promptBuilder.append("Create an exam with the following specifications:\n\n");
-        
-        // Add request parameters to the prompt
-        promptBuilder.append("Subject: ").append(request.getSubject()).append("\n");
-        promptBuilder.append("Grade/Level: ").append(request.getGradeLevel()).append("\n");
-        promptBuilder.append("Exam Type: ").append(request.getExamType()).append("\n");
-        promptBuilder.append("Number of Questions: ").append(request.getNumberOfQuestions()).append("\n\n");
-        
-        // Add instructions for the response format
-        promptBuilder.append("Please format your response as a JSON object with the following structure:\n");
-        promptBuilder.append("{\n");
-        promptBuilder.append("  \"subject\": \"The subject of the exam\",\n");
-        promptBuilder.append("  \"gradeLevel\": \"The grade level of the exam\",\n");
-        promptBuilder.append("  \"examType\": \"The type of exam\",\n");
-        promptBuilder.append("  \"questions\": [\n");
-        promptBuilder.append("    {\n");
-        promptBuilder.append("      \"questionText\": \"The text of the question\",\n");
-        promptBuilder.append("      \"options\": [\"Option A\", \"Option B\", \"Option C\", \"Option D\"],\n");
-        promptBuilder.append("      \"correctAnswer\": \"The correct answer (e.g., 'Option A')\",\n");
-        promptBuilder.append("      \"explanation\": \"Explanation of the correct answer\"\n");
-        promptBuilder.append("    }\n");
-        promptBuilder.append("  ]\n");
-        promptBuilder.append("}\n\n");
-        
-        // Add custom prompt if provided
-        if (request.getCustomPrompt() != null && !request.getCustomPrompt().trim().isEmpty()) {
-            promptBuilder.append("Additional Instructions: ").append(request.getCustomPrompt()).append("\n");
-        }
-
-        return promptBuilder.toString();
     }
 
     /**
@@ -155,9 +120,10 @@ public class ExamCreationService {
      * 
      * @param rawResponse The raw response from the LLM
      * @param request The original exam creation request
+     * @param strategy The exam type strategy to use for parsing
      * @return The structured exam creation response
      */
-    private ExamCreationResponse parseResponse(String rawResponse, ExamCreationRequest request) {
+    private ExamCreationResponse parseResponse(String rawResponse, ExamCreationRequest request, ExamTypeStrategy strategy) {
         try {
             JsonNode responseJson = objectMapper.readTree(rawResponse);
             
@@ -191,43 +157,8 @@ public class ExamCreationService {
             // Parse the JSON content
             JsonNode examJson = objectMapper.readTree(jsonContent);
             
-            // Create the exam data
-            ExamCreationResponse.ExamData examData = new ExamCreationResponse.ExamData();
-            examData.setSubject(examJson.has("subject") ? examJson.get("subject").asText() : request.getSubject());
-            examData.setGradeLevel(examJson.has("gradeLevel") ? examJson.get("gradeLevel").asText() : request.getGradeLevel());
-            examData.setExamType(examJson.has("examType") ? examJson.get("examType").asText() : request.getExamType());
-            
-            // Parse questions
-            List<ExamCreationResponse.Question> questions = new ArrayList<>();
-            if (examJson.has("questions") && examJson.get("questions").isArray()) {
-                for (JsonNode questionNode : examJson.get("questions")) {
-                    ExamCreationResponse.Question question = new ExamCreationResponse.Question();
-                    
-                    if (questionNode.has("questionText")) {
-                        question.setQuestionText(questionNode.get("questionText").asText());
-                    }
-                    
-                    if (questionNode.has("options") && questionNode.get("options").isArray()) {
-                        List<String> options = new ArrayList<>();
-                        for (JsonNode optionNode : questionNode.get("options")) {
-                            options.add(optionNode.asText());
-                        }
-                        question.setOptions(options);
-                    }
-                    
-                    if (questionNode.has("correctAnswer")) {
-                        question.setCorrectAnswer(questionNode.get("correctAnswer").asText());
-                    }
-                    
-                    if (questionNode.has("explanation")) {
-                        question.setExplanation(questionNode.get("explanation").asText());
-                    }
-                    
-                    questions.add(question);
-                }
-            }
-            
-            examData.setQuestions(questions);
+            // Use the strategy to parse the exam data
+            ExamCreationResponse.ExamData examData = strategy.parseExamData(examJson, request);
             
             return new ExamCreationResponse("success", "Exam created successfully", examData);
         } catch (Exception e) {
