@@ -172,4 +172,121 @@ public class SahayakController {
             return ResponseEntity.internalServerError().body(response);
         }
     }
+    
+    @PostMapping("/video/generate-prompt")
+    public CompletableFuture<ResponseEntity<Map<String, String>>> generateVideoPrompt(
+            @RequestBody Map<String, Object> request) {
+        
+        logger.info("Generating video prompt for context");
+        
+        return teacherService.generateVideoPrompt(request)
+            .thenApply(prompt -> {
+                Map<String, String> response = new HashMap<>();
+                response.put("prompt", prompt);
+                response.put("status", "success");
+                return ResponseEntity.ok(response);
+            })
+            .exceptionally(throwable -> {
+                logger.error("Failed to generate video prompt", throwable);
+                Map<String, String> response = new HashMap<>();
+                response.put("status", "error");
+                response.put("message", "Failed to generate video prompt: " + throwable.getMessage());
+                return ResponseEntity.internalServerError().body(response);
+            });
+    }
+    
+    @PostMapping("/video/generate")
+    public CompletableFuture<ResponseEntity<Map<String, String>>> generateVideo(
+            @RequestBody Map<String, String> request) {
+        
+        String prompt = request.get("prompt");
+        if (prompt == null || prompt.trim().isEmpty()) {
+            Map<String, String> response = new HashMap<>();
+            response.put("status", "error");
+            response.put("message", "Video prompt cannot be empty");
+            return CompletableFuture.completedFuture(ResponseEntity.badRequest().body(response));
+        }
+        
+        logger.info("Starting video generation with prompt: {}", 
+                   prompt.substring(0, Math.min(100, prompt.length())) + "...");
+        
+        return teacherService.generateVideo(prompt)
+            .thenApply(operationName -> {
+                Map<String, String> response = new HashMap<>();
+                response.put("operationName", operationName);
+                response.put("status", "started");
+                response.put("message", "Video generation started successfully");
+                return ResponseEntity.ok(response);
+            })
+            .exceptionally(throwable -> {
+                logger.error("Failed to start video generation", throwable);
+                Map<String, String> response = new HashMap<>();
+                response.put("status", "error");
+                response.put("message", "Failed to start video generation: " + throwable.getMessage());
+                return ResponseEntity.internalServerError().body(response);
+            });
+    }
+    
+    @GetMapping("/video/status")
+    public CompletableFuture<ResponseEntity<Map<String, Object>>> getVideoStatus(
+            @RequestParam String operationName) {
+        
+        logger.info("Checking video generation status for operation: {}", operationName);
+        
+        // Decode the operation name if it's URL encoded
+        String decodedOperationName;
+        try {
+            decodedOperationName = java.net.URLDecoder.decode(operationName, "UTF-8");
+            logger.info("Decoded operation name: {}", decodedOperationName);
+        } catch (Exception e) {
+            logger.warn("Failed to decode operation name, using as-is: {}", operationName);
+            decodedOperationName = operationName;
+        }
+        
+        final String finalOperationName = decodedOperationName;
+        
+        return teacherService.getVideoStatus(decodedOperationName)
+            .thenApply(status -> {
+                Map<String, Object> response = new HashMap<>();
+                response.put("operationName", operationName);
+                response.put("done", status.get("done"));
+                if ((Boolean) status.get("done")) {
+                    response.put("videoUri", status.get("videoUri"));
+                }
+                response.put("status", "success");
+                return ResponseEntity.ok(response);
+            })
+            .exceptionally(throwable -> {
+                logger.error("Failed to check video status for operation: {}", operationName, throwable);
+                Map<String, Object> response = new HashMap<>();
+                response.put("operationName", operationName);
+                response.put("status", "error");
+                response.put("message", "Failed to check video status: " + throwable.getMessage());
+                return ResponseEntity.internalServerError().body(response);
+            });
+    }
+    
+    @PostMapping("/video/download")
+    public CompletableFuture<ResponseEntity<byte[]>> downloadVideo(
+            @RequestBody Map<String, String> request) {
+        
+        String videoUri = request.get("videoUri");
+        if (videoUri == null || videoUri.trim().isEmpty()) {
+            return CompletableFuture.completedFuture(ResponseEntity.badRequest().build());
+        }
+        
+        logger.info("Downloading video from URI: {}", videoUri);
+        
+        return teacherService.downloadVideo(videoUri)
+            .thenApply(videoData -> {
+                return ResponseEntity.ok()
+                    .header("Content-Type", "video/mp4")
+                    .header("Content-Disposition", "attachment; filename=\"educational-video.mp4\"")
+                    .body(videoData);
+            })
+            .exceptionally(throwable -> {
+                logger.error("Failed to download video from URI: {}", videoUri, throwable);
+                return ResponseEntity.internalServerError().build();
+            });
+    }
 }

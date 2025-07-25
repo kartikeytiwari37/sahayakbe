@@ -1,15 +1,28 @@
 package com.sahayak.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sahayak.model.LiveConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -307,5 +320,298 @@ public class SahayakTeacherService {
         });
         
         return status;
+    }
+    
+    // Video Generation Methods
+    private final HttpClient httpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(30))
+            .build();
+    
+    // Create a more permissive HTTP client for development
+    private HttpClient createPermissiveHttpClient() {
+        try {
+            // Create a trust manager that accepts all certificates (for development only)
+            javax.net.ssl.TrustManager[] trustAllCerts = new javax.net.ssl.TrustManager[] {
+                new javax.net.ssl.X509TrustManager() {
+                    public java.security.cert.X509Certificate[] getAcceptedIssuers() {
+                        return null;
+                    }
+                    public void checkClientTrusted(java.security.cert.X509Certificate[] certs, String authType) {
+                    }
+                    public void checkServerTrusted(java.security.cert.X509Certificate[] certs, String authType) {
+                    }
+                }
+            };
+            
+            javax.net.ssl.SSLContext sslContext = javax.net.ssl.SSLContext.getInstance("SSL");
+            sslContext.init(null, trustAllCerts, new java.security.SecureRandom());
+            
+            return HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(30))
+                .followRedirects(HttpClient.Redirect.ALWAYS)
+                .sslContext(sslContext)
+                .build();
+        } catch (Exception e) {
+            logger.warn("Failed to create permissive HTTP client, using default: {}", e.getMessage());
+            return HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(30))
+                .followRedirects(HttpClient.Redirect.ALWAYS)
+                .build();
+        }
+    }
+    
+    public CompletableFuture<String> generateVideoPrompt(Map<String, Object> request) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> context = (Map<String, Object>) request.get("context");
+                
+                String teachingPrompt = (String) context.get("teachingPrompt");
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> chatHistory = (List<Map<String, Object>>) context.get("chatHistory");
+                
+                // Build context string
+                StringBuilder contextBuilder = new StringBuilder();
+                contextBuilder.append("Teaching Assistant Context: ").append(teachingPrompt != null ? teachingPrompt : "General teaching assistant").append("\n\n");
+                contextBuilder.append("Recent Conversation:\n");
+                
+                if (chatHistory != null && !chatHistory.isEmpty()) {
+                    for (Map<String, Object> message : chatHistory) {
+                        String role = (String) message.get("role");
+                        String content = (String) message.get("content");
+                        contextBuilder.append(role.equals("user") ? "Student: " : "Teacher: ").append(content).append("\n");
+                    }
+                } else {
+                    contextBuilder.append("No conversation history available.\n");
+                }
+                
+                String contextString = contextBuilder.toString();
+                
+                // Create structured prompt for Veo 3.0 video generation
+                String promptText = "Analyze the teaching context and conversation to create a structured educational video prompt for Veo 3.0.\n\n" +
+                    "Generate a detailed video prompt using this EXACT format:\n\n" +
+                    "prompt_name: \"[Educational Topic] - [Brief Description]\"\n" +
+                    "base_style: \"educational, clear, engaging, 4K\"\n" +
+                    "aspect_ratio: \"16:9\"\n" +
+                    "setting_description: \"[Describe the educational setting - classroom, lab, outdoor, etc.]\"\n" +
+                    "camera_setup: \"[Camera angle and movement - fixed wide shot, close-up, pan, etc.]\"\n" +
+                    "key_elements:\n" +
+                    "- \"[Main educational element 1]\"\n" +
+                    "- \"[Main educational element 2]\"\n" +
+                    "educational_elements:\n" +
+                    "- \"[Learning visual 1]\"\n" +
+                    "- \"[Learning visual 2]\"\n" +
+                    "- \"[Learning visual 3]\"\n" +
+                    "negative_prompts: [\"no distracting elements\", \"no inappropriate content\", \"clear audio\"]\n" +
+                    "timeline:\n" +
+                    "- sequence: 1\n" +
+                    "  timestamp: \"00:00-00:02\"\n" +
+                    "  action: \"[Opening scene description]\"\n" +
+                    "  audio: \"[Narration or sound description]\"\n" +
+                    "- sequence: 2\n" +
+                    "  timestamp: \"00:02-00:06\"\n" +
+                    "  action: \"[Main teaching demonstration]\"\n" +
+                    "  audio: \"[Educational explanation]\"\n" +
+                    "- sequence: 3\n" +
+                    "  timestamp: \"00:06-00:08\"\n" +
+                    "  action: \"[Conclusion or summary visual]\"\n" +
+                    "  audio: \"[Closing narration]\"\n\n" +
+                    "CONTEXT TO ANALYZE:\n" + contextString + "\n\n" +
+                    "Generate the structured video prompt now:";
+                
+                // Create request body for Gemini API
+                Map<String, Object> requestBody = new HashMap<>();
+                Map<String, Object> content = new HashMap<>();
+                Map<String, Object> parts = new HashMap<>();
+                parts.put("text", promptText);
+                content.put("parts", Arrays.asList(parts));
+                requestBody.put("contents", Arrays.asList(content));
+                
+                String requestJson = objectMapper.writeValueAsString(requestBody);
+                
+                // Log the prompt generation request
+                logger.info("=== VIDEO PROMPT GENERATION REQUEST ===");
+                logger.info("Context String: {}", contextString);
+                logger.info("Enhanced Prompt Text: {}", promptText);
+                logger.info("Request JSON: {}", requestJson);
+                logger.info("========================================");
+                
+                // Make HTTP request to Gemini API
+                HttpRequest httpRequest = HttpRequest.newBuilder()
+                    .uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"))
+                    .header("x-goog-api-key", geminiApiKey)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(requestJson))
+                    .build();
+                
+                HttpClient client = createPermissiveHttpClient();
+                HttpResponse<String> response = client.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+                
+                if (response.statusCode() != 200) {
+                    throw new RuntimeException("Failed to generate video prompt. Status: " + response.statusCode() + ", Body: " + response.body());
+                }
+                
+                // Parse response
+                JsonNode responseJson = objectMapper.readTree(response.body());
+                JsonNode candidates = responseJson.get("candidates");
+                if (candidates != null && candidates.size() > 0) {
+                    JsonNode firstCandidate = candidates.get(0);
+                    JsonNode contentNode = firstCandidate.get("content");
+                    if (contentNode != null) {
+                        JsonNode partsNode = contentNode.get("parts");
+                        if (partsNode != null && partsNode.size() > 0) {
+                            JsonNode textNode = partsNode.get(0).get("text");
+                            if (textNode != null) {
+                                String generatedPrompt = textNode.asText();
+                                logger.info("Generated video prompt: {}", generatedPrompt);
+                                return generatedPrompt;
+                            }
+                        }
+                    }
+                }
+                
+                throw new RuntimeException("No valid prompt generated from Gemini API response");
+                
+            } catch (Exception e) {
+                logger.error("Error generating video prompt", e);
+                throw new RuntimeException("Failed to generate video prompt", e);
+            }
+        });
+    }
+    
+    public CompletableFuture<String> generateVideo(String prompt) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                // Create request body for Veo video generation
+                Map<String, Object> instance = new HashMap<>();
+                instance.put("prompt", prompt);
+                
+                Map<String, Object> requestBody = new HashMap<>();
+                requestBody.put("instances", Arrays.asList(instance));
+                
+                String requestJson = objectMapper.writeValueAsString(requestBody);
+                
+                // Log the video generation request
+                logger.info("=== VIDEO GENERATION REQUEST ===");
+                logger.info("Video Prompt: {}", prompt);
+                logger.info("Request JSON: {}", requestJson);
+                logger.info("================================");
+                
+                // Make HTTP request to Veo API
+                HttpRequest httpRequest = HttpRequest.newBuilder()
+                    .uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models/veo-3.0-generate-preview:predictLongRunning"))
+                    .header("x-goog-api-key", geminiApiKey)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(requestJson))
+                    .build();
+                
+                HttpClient client = createPermissiveHttpClient();
+                HttpResponse<String> response = client.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+                
+                if (response.statusCode() != 200) {
+                    throw new RuntimeException("Failed to start video generation. Status: " + response.statusCode() + ", Body: " + response.body());
+                }
+                
+                // Parse response to get operation name
+                JsonNode responseJson = objectMapper.readTree(response.body());
+                JsonNode nameNode = responseJson.get("name");
+                if (nameNode != null) {
+                    String operationName = nameNode.asText();
+                    logger.info("Video generation started with operation: {}", operationName);
+                    return operationName;
+                }
+                
+                throw new RuntimeException("No operation name returned from video generation API");
+                
+            } catch (Exception e) {
+                logger.error("Error starting video generation", e);
+                throw new RuntimeException("Failed to start video generation", e);
+            }
+        });
+    }
+    
+    public CompletableFuture<Map<String, Object>> getVideoStatus(String operationName) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                // Make HTTP request to check operation status
+                HttpRequest httpRequest = HttpRequest.newBuilder()
+                    .uri(URI.create("https://generativelanguage.googleapis.com/v1beta/" + operationName))
+                    .header("x-goog-api-key", geminiApiKey)
+                    .GET()
+                    .build();
+                
+                HttpClient client = createPermissiveHttpClient();
+                HttpResponse<String> response = client.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+                
+                if (response.statusCode() != 200) {
+                    throw new RuntimeException("Failed to check video status. Status: " + response.statusCode() + ", Body: " + response.body());
+                }
+                
+                // Parse response
+                JsonNode responseJson = objectMapper.readTree(response.body());
+                Map<String, Object> result = new HashMap<>();
+                
+                JsonNode doneNode = responseJson.get("done");
+                boolean isDone = doneNode != null && doneNode.asBoolean();
+                result.put("done", isDone);
+                
+                if (isDone) {
+                    // Extract video URI
+                    JsonNode responseNode = responseJson.get("response");
+                    if (responseNode != null) {
+                        JsonNode generateVideoResponse = responseNode.get("generateVideoResponse");
+                        if (generateVideoResponse != null) {
+                            JsonNode generatedSamples = generateVideoResponse.get("generatedSamples");
+                            if (generatedSamples != null && generatedSamples.size() > 0) {
+                                JsonNode firstSample = generatedSamples.get(0);
+                                JsonNode video = firstSample.get("video");
+                                if (video != null) {
+                                    JsonNode uriNode = video.get("uri");
+                                    if (uriNode != null) {
+                                        String videoUri = uriNode.asText();
+                                        result.put("videoUri", videoUri);
+                                        logger.info("Video generation completed. URI: {}", videoUri);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                return result;
+                
+            } catch (Exception e) {
+                logger.error("Error checking video status", e);
+                throw new RuntimeException("Failed to check video status", e);
+            }
+        });
+    }
+    
+    public CompletableFuture<byte[]> downloadVideo(String videoUri) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                // Make HTTP request to download video
+                HttpRequest httpRequest = HttpRequest.newBuilder()
+                    .uri(URI.create(videoUri))
+                    .header("x-goog-api-key", geminiApiKey)
+                    .GET()
+                    .build();
+                
+                HttpClient client = createPermissiveHttpClient();
+                HttpResponse<byte[]> response = client.send(httpRequest, HttpResponse.BodyHandlers.ofByteArray());
+                
+                if (response.statusCode() != 200) {
+                    throw new RuntimeException("Failed to download video. Status: " + response.statusCode());
+                }
+                
+                byte[] videoData = response.body();
+                logger.info("Video downloaded successfully. Size: {} bytes", videoData.length);
+                return videoData;
+                
+            } catch (Exception e) {
+                logger.error("Error downloading video", e);
+                throw new RuntimeException("Failed to download video", e);
+            }
+        });
     }
 }
