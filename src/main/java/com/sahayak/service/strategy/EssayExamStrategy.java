@@ -39,6 +39,7 @@ public class EssayExamStrategy implements ExamTypeStrategy {
         promptBuilder.append("  \"examType\": \"ESSAY\",\n");
         promptBuilder.append("  \"questions\": [\n");
         promptBuilder.append("    {\n");
+        promptBuilder.append("      \"questionType\": \"ESSAY\",\n");
         promptBuilder.append("      \"questionText\": \"The essay prompt or question\",\n");
         promptBuilder.append("      \"explanation\": \"Guidance or rubric for the essay\"\n");
         promptBuilder.append("    }\n");
@@ -81,6 +82,9 @@ public class EssayExamStrategy implements ExamTypeStrategy {
                     if (questionNode.has("explanation")) {
                         question.setExplanation(questionNode.get("explanation").asText());
                     }
+                    
+                    // Set the question type
+                    question.setQuestionType("ESSAY");
                     
                     questions.add(question);
                 }

@@ -125,15 +125,17 @@ public class ExamCreationResponse {
         private List<String> options;
         private String correctAnswer;
         private String explanation;
+        private String questionType; // Enum format: MULTIPLE_CHOICE, TRUE_FALSE, SHORT_ANSWER, ESSAY
 
         public Question() {
         }
 
-        public Question(String questionText, List<String> options, String correctAnswer, String explanation) {
+        public Question(String questionText, List<String> options, String correctAnswer, String explanation, String questionType) {
             this.questionText = questionText;
             this.options = options;
             this.correctAnswer = correctAnswer;
             this.explanation = explanation;
+            this.questionType = questionType;
         }
 
         public String getQuestionText() {
@@ -166,6 +168,14 @@ public class ExamCreationResponse {
 
         public void setExplanation(String explanation) {
             this.explanation = explanation;
+        }
+
+        public String getQuestionType() {
+            return questionType;
+        }
+
+        public void setQuestionType(String questionType) {
+            this.questionType = questionType;
         }
     }
 }

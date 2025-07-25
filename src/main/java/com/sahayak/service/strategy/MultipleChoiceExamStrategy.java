@@ -37,6 +37,7 @@ public class MultipleChoiceExamStrategy implements ExamTypeStrategy {
         promptBuilder.append("  \"examType\": \"MULTIPLE_CHOICE\",\n");
         promptBuilder.append("  \"questions\": [\n");
         promptBuilder.append("    {\n");
+        promptBuilder.append("      \"questionType\": \"MULTIPLE_CHOICE\",\n");
         promptBuilder.append("      \"questionText\": \"The text of the question\",\n");
         promptBuilder.append("      \"options\": [\"Option A\", \"Option B\", \"Option C\", \"Option D\"],\n");
         promptBuilder.append("      \"correctAnswer\": \"The correct answer (e.g., 'Option A')\",\n");
@@ -87,6 +88,9 @@ public class MultipleChoiceExamStrategy implements ExamTypeStrategy {
                     if (questionNode.has("explanation")) {
                         question.setExplanation(questionNode.get("explanation").asText());
                     }
+                    
+                    // Set the question type
+                    question.setQuestionType("MULTIPLE_CHOICE");
                     
                     questions.add(question);
                 }

@@ -38,6 +38,7 @@ public class TrueFalseExamStrategy implements ExamTypeStrategy {
         promptBuilder.append("  \"examType\": \"TRUE_FALSE\",\n");
         promptBuilder.append("  \"questions\": [\n");
         promptBuilder.append("    {\n");
+        promptBuilder.append("      \"questionType\": \"TRUE_FALSE\",\n");
         promptBuilder.append("      \"questionText\": \"The statement to evaluate as true or false\",\n");
         promptBuilder.append("      \"correctAnswer\": \"True or False\",\n");
         promptBuilder.append("      \"explanation\": \"Explanation of why the statement is true or false\"\n");
@@ -82,6 +83,9 @@ public class TrueFalseExamStrategy implements ExamTypeStrategy {
                     if (questionNode.has("explanation")) {
                         question.setExplanation(questionNode.get("explanation").asText());
                     }
+                    
+                    // Set the question type
+                    question.setQuestionType("TRUE_FALSE");
                     
                     questions.add(question);
                 }

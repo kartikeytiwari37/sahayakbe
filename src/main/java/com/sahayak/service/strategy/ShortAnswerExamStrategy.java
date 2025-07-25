@@ -47,6 +47,7 @@ public class ShortAnswerExamStrategy implements ExamTypeStrategy {
         promptBuilder.append("  \"examType\": \"SHORT_ANSWER\",\n");
         promptBuilder.append("  \"questions\": [\n");
         promptBuilder.append("    {\n");
+        promptBuilder.append("      \"questionType\": \"SHORT_ANSWER\",\n");
         promptBuilder.append("      \"questionText\": \"The short answer question\",\n");
         promptBuilder.append("      \"correctAnswer\": \"The expected answer (2-3 lines) or key points that should be included\",\n");
         promptBuilder.append("      \"explanation\": \"Explanation of the answer and/or grading rubric (what constitutes a complete answer)\"\n");
@@ -104,6 +105,9 @@ public class ShortAnswerExamStrategy implements ExamTypeStrategy {
                         logger.warn("Short answer question missing explanation field");
                         question.setExplanation("No explanation or grading rubric provided");
                     }
+                    
+                    // Set the question type
+                    question.setQuestionType("SHORT_ANSWER");
                     
                     questions.add(question);
                 }
