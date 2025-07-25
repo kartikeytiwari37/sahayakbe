@@ -1,0 +1,47 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: sahayak-backend
+  annotations:
+    run.googleapis.com/ingress: all
+    run.googleapis.com/execution-environment: gen2
+spec:
+  template:
+    metadata:
+      annotations:
+        run.googleapis.com/cpu-throttling: "false"
+        run.googleapis.com/memory: "1Gi"
+        run.googleapis.com/cpu: "1000m"
+        run.googleapis.com/max-scale: "10"
+        run.googleapis.com/min-scale: "0"
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 300
+      containers:
+      - image: gcr.io/PROJECT_ID/sahayak-backend:latest
+        ports:
+        - name: http1
+          containerPort: 8080
+        env:
+        - name: GEMINI_API_KEY
+          value: "YOUR_GEMINI_API_KEY"
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+        startupProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3

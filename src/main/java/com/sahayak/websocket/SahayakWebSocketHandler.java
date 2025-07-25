@@ -32,21 +32,8 @@ public class SahayakWebSocketHandler implements WebSocketHandler {
         logger.info("WebSocket connection established: {}", session.getId());
         webSocketSessions.put(session.getId(), session);
         
-        // Create a new teacher session for this client
-        teacherService.createTeacherSession().thenAccept(teacherSessionId -> {
-            sessionToTeacherMapping.put(session.getId(), teacherSessionId);
-            logger.info("Mapped WebSocket session {} to teacher session {}", session.getId(), teacherSessionId);
-            
-            // Set up handlers for teacher responses
-            setupTeacherHandlers(session.getId(), teacherSessionId);
-            
-            // Send connection success message to client
-            sendToClient(session, createMessage("connection", "success", "Connected to AI Teacher"));
-        }).exceptionally(throwable -> {
-            logger.error("Failed to create teacher session for WebSocket {}", session.getId(), throwable);
-            sendToClient(session, createMessage("connection", "error", "Failed to connect to AI Teacher"));
-            return null;
-        });
+        // Don't create session immediately - wait for init message to determine session type
+        sendToClient(session, createMessage("connection", "success", "WebSocket connected - waiting for initialization"));
     }
     
     private void setupTeacherHandlers(String webSocketSessionId, String teacherSessionId) {
@@ -91,6 +78,12 @@ public class SahayakWebSocketHandler implements WebSocketHandler {
             
             JsonNode jsonNode = objectMapper.readTree(payload);
             String type = jsonNode.get("type").asText();
+            // Handle initialization message
+            if ("init".equals(type)) {
+                handleInitMessage(session, jsonNode);
+                return;
+            }
+            
             String teacherSessionId = sessionToTeacherMapping.get(session.getId());
             
             if (teacherSessionId == null) {
@@ -125,6 +118,56 @@ public class SahayakWebSocketHandler implements WebSocketHandler {
         } catch (Exception e) {
             logger.error("Error handling text message from session {}", session.getId(), e);
             sendToClient(session, createMessage("error", "processing", "Error processing message: " + e.getMessage()));
+        }
+    }
+    
+    private void handleInitMessage(WebSocketSession session, JsonNode jsonNode) {
+        try {
+            String mode = jsonNode.has("mode") ? jsonNode.get("mode").asText() : "teacher";
+            logger.info("Initializing session {} with mode: {}", session.getId(), mode);
+            
+            if ("prompt-creator".equals(mode)) {
+                // Create prompt creator session
+                teacherService.createPromptCreatorSession().thenAccept(teacherSessionId -> {
+                    sessionToTeacherMapping.put(session.getId(), teacherSessionId);
+                    logger.info("Mapped WebSocket session {} to prompt creator session {}", session.getId(), teacherSessionId);
+                    
+                    // Set up handlers for prompt creator responses
+                    setupTeacherHandlers(session.getId(), teacherSessionId);
+                    
+                    // Send connection success message to client
+                    sendToClient(session, createMessage("connection", "success", "Connected to Kalam Sir - Prompt Creator"));
+                }).exceptionally(throwable -> {
+                    logger.error("Failed to create prompt creator session for WebSocket {}", session.getId(), throwable);
+                    sendToClient(session, createMessage("connection", "error", "Failed to connect to Kalam Sir"));
+                    return null;
+                });
+            } else {
+                // Create regular teacher session with optional custom prompt
+                String customPrompt = jsonNode.has("customPrompt") && !jsonNode.get("customPrompt").isNull() 
+                    ? jsonNode.get("customPrompt").asText() 
+                    : null;
+                
+                logger.info("Creating teacher session with custom prompt: {}", customPrompt != null ? "Yes" : "No");
+                
+                teacherService.createTeacherSessionWithCustomPrompt(customPrompt).thenAccept(teacherSessionId -> {
+                    sessionToTeacherMapping.put(session.getId(), teacherSessionId);
+                    logger.info("Mapped WebSocket session {} to teacher session {} with custom prompt", session.getId(), teacherSessionId);
+                    
+                    // Set up handlers for teacher responses
+                    setupTeacherHandlers(session.getId(), teacherSessionId);
+                    
+                    // Send connection success message to client
+                    sendToClient(session, createMessage("connection", "success", "Connected to AI Teacher"));
+                }).exceptionally(throwable -> {
+                    logger.error("Failed to create teacher session for WebSocket {}", session.getId(), throwable);
+                    sendToClient(session, createMessage("connection", "error", "Failed to connect to AI Teacher"));
+                    return null;
+                });
+            }
+        } catch (Exception e) {
+            logger.error("Error handling init message from session {}", session.getId(), e);
+            sendToClient(session, createMessage("error", "init", "Error during initialization: " + e.getMessage()));
         }
     }
     
