@@ -11,7 +11,7 @@ import java.util.List;
 
 /**
  * Strategy implementation for Short Answer exam type.
- * This is a placeholder implementation that will be completed in the future.
+ * This strategy creates exams with questions that require brief, concise answers (typically 2-3 lines).
  */
 public class ShortAnswerExamStrategy implements ExamTypeStrategy {
 
@@ -19,8 +19,8 @@ public class ShortAnswerExamStrategy implements ExamTypeStrategy {
 
     @Override
     public String createExamPrompt(ExamCreationRequest request) {
-        // This is a placeholder implementation
-        logger.warn("Short Answer exam type is not yet fully implemented");
+        logger.info("Creating Short Answer exam prompt for subject: {}, grade level: {}", 
+                request.getSubject(), request.getGradeLevel());
         
         StringBuilder promptBuilder = new StringBuilder();
         promptBuilder.append("Create a short answer exam with the following specifications:\n\n");
@@ -31,7 +31,15 @@ public class ShortAnswerExamStrategy implements ExamTypeStrategy {
         promptBuilder.append("Exam Type: SHORT_ANSWER\n");
         promptBuilder.append("Number of Questions: ").append(request.getNumberOfQuestions()).append("\n\n");
         
-        // For now, we'll use a similar format to multiple choice but note it's for short answer
+        // Specific instructions for short answer questions
+        promptBuilder.append("IMPORTANT GUIDELINES FOR SHORT ANSWER QUESTIONS:\n");
+        promptBuilder.append("- Create questions that require brief, concise answers (typically 2-3 lines of text)\n");
+        promptBuilder.append("- Questions should test understanding of key concepts, definitions, or applications\n");
+        promptBuilder.append("- Avoid questions that can be answered with just a single word\n");
+        promptBuilder.append("- Also avoid questions that would require lengthy explanations (use Essay type for those)\n");
+        promptBuilder.append("- For each question, provide a model answer that captures the key points expected\n");
+        promptBuilder.append("- Include a clear grading rubric or explanation for each question\n\n");
+        
         promptBuilder.append("Please format your response as a JSON object with the following structure:\n");
         promptBuilder.append("{\n");
         promptBuilder.append("  \"subject\": \"The subject of the exam\",\n");
@@ -40,8 +48,8 @@ public class ShortAnswerExamStrategy implements ExamTypeStrategy {
         promptBuilder.append("  \"questions\": [\n");
         promptBuilder.append("    {\n");
         promptBuilder.append("      \"questionText\": \"The short answer question\",\n");
-        promptBuilder.append("      \"correctAnswer\": \"The expected answer or key points\",\n");
-        promptBuilder.append("      \"explanation\": \"Explanation or grading rubric\"\n");
+        promptBuilder.append("      \"correctAnswer\": \"The expected answer (2-3 lines) or key points that should be included\",\n");
+        promptBuilder.append("      \"explanation\": \"Explanation of the answer and/or grading rubric (what constitutes a complete answer)\"\n");
         promptBuilder.append("    }\n");
         promptBuilder.append("  ]\n");
         promptBuilder.append("}\n\n");
@@ -56,8 +64,8 @@ public class ShortAnswerExamStrategy implements ExamTypeStrategy {
 
     @Override
     public ExamCreationResponse.ExamData parseExamData(JsonNode examJson, ExamCreationRequest request) {
-        // This is a placeholder implementation
-        logger.warn("Short Answer exam type parsing is not yet fully implemented");
+        logger.info("Parsing Short Answer exam data for subject: {}", 
+                examJson.has("subject") ? examJson.get("subject").asText() : request.getSubject());
         
         try {
             // Create the exam data
@@ -74,21 +82,33 @@ public class ShortAnswerExamStrategy implements ExamTypeStrategy {
                     
                     if (questionNode.has("questionText")) {
                         question.setQuestionText(questionNode.get("questionText").asText());
+                    } else {
+                        logger.warn("Question missing questionText field");
+                        question.setQuestionText("Missing question text");
                     }
                     
-                    // Short answer questions don't have options in the same way as multiple choice
-                    // For now, we'll leave the options field empty
+                    // Short answer questions don't have options like multiple choice
+                    // But we'll set an empty list to maintain consistency
+                    question.setOptions(new ArrayList<>());
                     
                     if (questionNode.has("correctAnswer")) {
                         question.setCorrectAnswer(questionNode.get("correctAnswer").asText());
+                    } else {
+                        logger.warn("Short answer question missing correctAnswer field");
+                        question.setCorrectAnswer("No model answer provided");
                     }
                     
                     if (questionNode.has("explanation")) {
                         question.setExplanation(questionNode.get("explanation").asText());
+                    } else {
+                        logger.warn("Short answer question missing explanation field");
+                        question.setExplanation("No explanation or grading rubric provided");
                     }
                     
                     questions.add(question);
                 }
+            } else {
+                logger.warn("No questions found in the exam data or questions is not an array");
             }
             
             examData.setQuestions(questions);
