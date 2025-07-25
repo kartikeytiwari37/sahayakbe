@@ -48,8 +48,12 @@ public class SahayakTeacherService {
     }
     
     public CompletableFuture<String> createTeacherSession() {
+        return createTeacherSessionWithCustomPrompt(null);
+    }
+    
+    public CompletableFuture<String> createTeacherSessionWithCustomPrompt(String customPrompt) {
         String sessionId = UUID.randomUUID().toString();
-        logger.info("Creating dual teacher sessions (text + audio): {}", sessionId);
+        logger.info("Creating dual teacher sessions (text + audio) with custom prompt: {}", sessionId);
         
         return CompletableFuture.supplyAsync(() -> {
             try {
@@ -60,7 +64,7 @@ public class SahayakTeacherService {
                 textClient.connectAsync().get();
                 Thread.sleep(500);
                 
-                LiveConfig textConfig = createTeacherConfigWithModality("text");
+                LiveConfig textConfig = createTeacherConfigWithModality("text", customPrompt);
                 textClient.sendSetupMessage(textConfig);
                 textSessions.put(sessionId, textClient);
                 logger.info("Text session created for: {}", sessionId);
@@ -72,7 +76,7 @@ public class SahayakTeacherService {
                 audioClient.connectAsync().get();
                 Thread.sleep(500);
                 
-                LiveConfig audioConfig = createTeacherConfigWithModality("audio");
+                LiveConfig audioConfig = createTeacherConfigWithModality("audio", customPrompt);
                 audioClient.sendSetupMessage(audioConfig);
                 audioSessions.put(sessionId, audioClient);
                 logger.info("Audio session created for: {}", sessionId);
@@ -86,15 +90,49 @@ public class SahayakTeacherService {
         });
     }
     
-    private LiveConfig createTeacherConfigWithModality(String modality) {
+    public CompletableFuture<String> createPromptCreatorSession() {
+        String sessionId = UUID.randomUUID().toString();
+        logger.info("Creating prompt creator session: {}", sessionId);
+        
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                // Create TEXT connection for prompt creation
+                GeminiLiveWebSocketClient textClient = new GeminiLiveWebSocketClient(
+                    geminiApiUrl, geminiApiKey, objectMapper, eventPublisher
+                );
+                textClient.connectAsync().get();
+                Thread.sleep(500);
+                
+                LiveConfig promptConfig = createPromptCreatorConfig();
+                textClient.sendSetupMessage(promptConfig);
+                textSessions.put(sessionId, textClient);
+                logger.info("Prompt creator session created for: {}", sessionId);
+                
+                return sessionId;
+            } catch (Exception e) {
+                logger.error("Failed to create prompt creator session", e);
+                throw new RuntimeException("Failed to create prompt creator session", e);
+            }
+        });
+    }
+    
+    private LiveConfig createTeacherConfigWithModality(String modality, String customPrompt) {
         LiveConfig config = new LiveConfig(geminiModel);
         
+        // Use custom prompt if provided, otherwise use default system instruction
+        String instructionText = customPrompt != null && !customPrompt.trim().isEmpty() 
+            ? customPrompt 
+            : systemInstruction;
+        
         // Add system instruction for AI teacher behavior
-        if (systemInstruction != null && !systemInstruction.trim().isEmpty()) {
-            LiveConfig.Part instructionPart = new LiveConfig.Part(systemInstruction);
+        if (instructionText != null && !instructionText.trim().isEmpty()) {
+            LiveConfig.Part instructionPart = new LiveConfig.Part(instructionText);
             LiveConfig.SystemInstruction sysInstruction = new LiveConfig.SystemInstruction(Arrays.asList(instructionPart));
             config.setSystemInstruction(sysInstruction);
-            logger.info("Added system instruction to {} config: {}", modality, systemInstruction.substring(0, Math.min(100, systemInstruction.length())) + "...");
+            logger.info("Added {} instruction to {} config: {}", 
+                       customPrompt != null ? "custom" : "default", 
+                       modality, 
+                       instructionText.substring(0, Math.min(100, instructionText.length())) + "...");
         } else {
             logger.warn("No system instruction found for {} config!", modality);
         }
@@ -125,6 +163,39 @@ public class SahayakTeacherService {
         config.setGenerationConfig(genConfig);
         
         logger.debug("Created {} config with responseModalities: {}", modality, modality);
+        return config;
+    }
+    
+    private LiveConfig createPromptCreatorConfig() {
+        LiveConfig config = new LiveConfig(geminiModel);
+        
+        // Special system instruction for prompt creation
+        String promptCreatorInstruction = "You are Kalam Sir, a friendly AI prompt creator who helps teachers quickly create teaching assistants. " +
+            "You are direct, efficient, and conversational. " +
+            "\n\nCRITICAL RULES:" +
+            "\n- NEVER repeat the same questions or ask long lists" +
+            "\n- ALWAYS acknowledge what the teacher already told you" +
+            "\n- If they give you subject + grade level + basic style, CREATE THE PROMPT IMMEDIATELY" +
+            "\n- Only ask ONE short follow-up if absolutely necessary" +
+            "\n- Be natural and conversational, not robotic" +
+            "\n\nExample:" +
+            "\nTeacher: 'I want a weather teaching assistant for 6th graders'" +
+            "\nYou: 'Perfect! A weather assistant for 6th graders. Should it focus more on explaining weather patterns, doing fun experiments, or helping with weather prediction activities?'" +
+            "\n[After their answer, create the prompt immediately]" +
+            "\n\nWhen you have enough info (which is usually after 1-2 exchanges), respond with:" +
+            "\n'FINAL_PROMPT: [detailed system instruction for the teaching assistant]'" +
+            "\n\nBe efficient - teachers want results quickly, not long questionnaires!";
+        
+        LiveConfig.Part instructionPart = new LiveConfig.Part(promptCreatorInstruction);
+        LiveConfig.SystemInstruction sysInstruction = new LiveConfig.SystemInstruction(Arrays.asList(instructionPart));
+        config.setSystemInstruction(sysInstruction);
+        
+        // Configure for text-only responses
+        LiveConfig.GenerationConfig genConfig = new LiveConfig.GenerationConfig();
+        genConfig.setResponseModalities("text");
+        config.setGenerationConfig(genConfig);
+        
+        logger.info("Created prompt creator config");
         return config;
     }
     
