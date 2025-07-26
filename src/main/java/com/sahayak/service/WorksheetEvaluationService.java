@@ -336,14 +336,31 @@ public class WorksheetEvaluationService {
     
     /**
      * Parse evaluation response into structured format
-     * This is a simplified parser - in production, you might want more sophisticated parsing
+     * Simplified to prioritize direct JSON parsing
      */
     private WorksheetEvaluationResponse.EvaluationResult parseEvaluationResponse(String evaluationText) {
         WorksheetEvaluationResponse.EvaluationResult result = new WorksheetEvaluationResponse.EvaluationResult();
         
         try {
-            // Try to extract structured information from the text
-            // First, try to extract JSON data if present
+            // First, try direct JSON parsing from the text
+            try {
+                // Check if the text is already a valid JSON
+                if (evaluationText.trim().startsWith("{") && evaluationText.trim().endsWith("}")) {
+                    JsonNode rootNode = objectMapper.readTree(evaluationText);
+                    JsonNode evaluationNode = rootNode.get("evaluation");
+                    
+                    if (evaluationNode != null) {
+                        // Direct mapping from JSON to result object
+                        result = objectMapper.treeToValue(evaluationNode, WorksheetEvaluationResponse.EvaluationResult.class);
+                        logger.info("Successfully parsed complete JSON response");
+                        return result;
+                    }
+                }
+            } catch (Exception e) {
+                logger.debug("Text is not a complete valid JSON, trying extraction methods: {}", e.getMessage());
+            }
+            
+            // If direct parsing failed, try extraction methods
             extractJsonFromText(evaluationText, result);
             
             // If JSON extraction didn't work, try regex-based extraction
@@ -380,147 +397,190 @@ public class WorksheetEvaluationService {
     
     /**
      * Extract JSON data from evaluation text
+     * Simplified to handle both formatted and unformatted JSON
      */
     private void extractJsonFromText(String text, WorksheetEvaluationResponse.EvaluationResult result) {
         try {
-            // First, check if the text contains a JSON code block (```json ... ```)
+            // Try different approaches to extract JSON
+            String jsonStr = null;
+            
+            // Approach 1: Look for JSON code block
             String codeBlockPattern = "```json\\s*\\{([\\s\\S]*?)\\}\\s*```";
             java.util.regex.Pattern codeBlockRegex = java.util.regex.Pattern.compile(codeBlockPattern);
             java.util.regex.Matcher codeBlockMatcher = codeBlockRegex.matcher(text);
-            
-            String jsonStr = null;
             
             if (codeBlockMatcher.find()) {
                 // Extract the JSON from the code block
                 jsonStr = "{" + codeBlockMatcher.group(1) + "}";
                 logger.info("Found JSON code block in evaluation text");
-            } else {
-                // If no code block, try to find JSON directly in the text
-                String jsonPattern = "\"evaluation\"\\s*:\\s*\\{";
-                java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(jsonPattern);
-                java.util.regex.Matcher matcher = pattern.matcher(text);
-                
-                if (matcher.find()) {
-                    // Extract the JSON object
-                    int startIndex = matcher.start();
-                    
-                    // Find the matching closing brace
-                    int openBraces = 0;
-                    int closeBraces = 0;
-                    int endIndex = startIndex;
-                    
-                    for (int i = startIndex; i < text.length(); i++) {
-                        if (text.charAt(i) == '{') {
-                            openBraces++;
-                        } else if (text.charAt(i) == '}') {
-                            closeBraces++;
-                            if (closeBraces == openBraces) {
-                                endIndex = i + 1;
-                                break;
+            } 
+            // Approach 2: Try to find the entire JSON object directly
+            else if (text.contains("\"evaluation\"")) {
+                try {
+                    // Find the outermost JSON object
+                    int startIndex = text.indexOf("{");
+                    if (startIndex >= 0) {
+                        // Find the matching closing brace for the outermost object
+                        int openBraces = 1;
+                        int endIndex = -1;
+                        
+                        for (int i = startIndex + 1; i < text.length(); i++) {
+                            if (text.charAt(i) == '{') {
+                                openBraces++;
+                            } else if (text.charAt(i) == '}') {
+                                openBraces--;
+                                if (openBraces == 0) {
+                                    endIndex = i + 1;
+                                    break;
+                                }
                             }
                         }
+                        
+                        if (endIndex > startIndex) {
+                            jsonStr = text.substring(startIndex, endIndex);
+                            logger.info("Found complete JSON object in evaluation text");
+                        }
                     }
+                } catch (Exception e) {
+                    logger.debug("Failed to extract complete JSON object: {}", e.getMessage());
+                }
+                
+                // Approach 3: If complete object extraction failed, try to extract just the evaluation part
+                if (jsonStr == null) {
+                    String jsonPattern = "\"evaluation\"\\s*:\\s*\\{";
+                    java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(jsonPattern);
+                    java.util.regex.Matcher matcher = pattern.matcher(text);
                     
-                    // Extract the JSON substring
-                    jsonStr = "{" + text.substring(startIndex, endIndex);
-                    logger.info("Found JSON directly in evaluation text");
+                    if (matcher.find()) {
+                        int startIndex = matcher.start();
+                        
+                        // Find the matching closing brace for the evaluation object
+                        int openBraces = 0;
+                        int closeBraces = 0;
+                        int endIndex = startIndex;
+                        
+                        for (int i = startIndex; i < text.length(); i++) {
+                            if (text.charAt(i) == '{') {
+                                openBraces++;
+                            } else if (text.charAt(i) == '}') {
+                                closeBraces++;
+                                if (closeBraces == openBraces) {
+                                    endIndex = i + 1;
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        jsonStr = "{" + text.substring(startIndex, endIndex);
+                        logger.info("Found evaluation JSON object in text");
+                    }
                 }
             }
             
+            // Process the extracted JSON
             if (jsonStr != null) {
-                // Parse the JSON
-                JsonNode rootNode = objectMapper.readTree(jsonStr);
-                JsonNode evaluationNode = rootNode.get("evaluation");
-                
-                if (evaluationNode != null) {
-                    // Extract values from JSON
-                    if (evaluationNode.has("totalScore")) {
-                        result.setTotalScore(evaluationNode.get("totalScore").asDouble());
-                    }
+                try {
+                    // Parse the JSON
+                    JsonNode rootNode = objectMapper.readTree(jsonStr);
+                    JsonNode evaluationNode = rootNode.get("evaluation");
                     
-                    if (evaluationNode.has("maxPossibleScore")) {
-                        result.setMaxPossibleScore(evaluationNode.get("maxPossibleScore").asDouble());
-                    }
-                    
-                    if (evaluationNode.has("percentage")) {
-                        result.setPercentage(evaluationNode.get("percentage").asDouble());
-                    }
-                    
-                    if (evaluationNode.has("questionsAnalyzed")) {
-                        result.setQuestionsAnalyzed(evaluationNode.get("questionsAnalyzed").asInt());
-                    }
-                    
-                    if (evaluationNode.has("questionWiseResults") && evaluationNode.get("questionWiseResults").isArray()) {
-                        JsonNode questionResults = evaluationNode.get("questionWiseResults");
-                        List<WorksheetEvaluationResponse.QuestionResult> questionResultsList = new ArrayList<>();
-                        
-                        for (JsonNode questionNode : questionResults) {
-                            WorksheetEvaluationResponse.QuestionResult questionResult = new WorksheetEvaluationResponse.QuestionResult();
-                            
-                            if (questionNode.has("questionNumber")) {
-                                questionResult.setQuestionNumber(questionNode.get("questionNumber").asText());
-                            }
-                            
-                            if (questionNode.has("questionText")) {
-                                questionResult.setQuestionText(questionNode.get("questionText").asText());
-                            }
-                            
-                            if (questionNode.has("studentAnswer")) {
-                                questionResult.setStudentAnswer(questionNode.get("studentAnswer").asText());
-                            }
-                            
-                            if (questionNode.has("correctAnswer")) {
-                                questionResult.setCorrectAnswer(questionNode.get("correctAnswer").asText());
-                            }
-                            
-                            // Handle different field names for scores
-                            if (questionNode.has("scoreAwarded")) {
-                                questionResult.setPointsAwarded(questionNode.get("scoreAwarded").asDouble());
-                            } else if (questionNode.has("score")) {
-                                questionResult.setPointsAwarded(questionNode.get("score").asDouble());
-                            }
-                            
-                            if (questionNode.has("maxPoints")) {
-                                questionResult.setMaxPoints(questionNode.get("maxPoints").asDouble());
-                            } else if (questionNode.has("maxScore")) {
-                                questionResult.setMaxPoints(questionNode.get("maxScore").asDouble());
-                            }
-                            
-                            if (questionNode.has("feedback")) {
-                                questionResult.setFeedback(questionNode.get("feedback").asText());
-                            }
-                            
-                            questionResultsList.add(questionResult);
+                    if (evaluationNode != null) {
+                        // Direct extraction of fields from JSON
+                        if (evaluationNode.has("totalScore")) {
+                            result.setTotalScore(evaluationNode.get("totalScore").asDouble());
                         }
                         
-                        result.setQuestionWiseResults(questionResultsList);
-                    }
-                    
-                    if (evaluationNode.has("overallFeedback")) {
-                        result.setOverallFeedback(evaluationNode.get("overallFeedback").asText());
-                    }
-                    
-                    if (evaluationNode.has("strengths") && evaluationNode.get("strengths").isArray()) {
-                        List<String> strengths = new ArrayList<>();
-                        for (JsonNode strength : evaluationNode.get("strengths")) {
-                            strengths.add(strength.asText());
+                        if (evaluationNode.has("maxPossibleScore")) {
+                            result.setMaxPossibleScore(evaluationNode.get("maxPossibleScore").asDouble());
                         }
-                        result.setStrengths(strengths);
-                    }
-                    
-                    if (evaluationNode.has("areasForImprovement") && evaluationNode.get("areasForImprovement").isArray()) {
-                        List<String> areasForImprovement = new ArrayList<>();
-                        for (JsonNode area : evaluationNode.get("areasForImprovement")) {
-                            areasForImprovement.add(area.asText());
+                        
+                        if (evaluationNode.has("percentage")) {
+                            result.setPercentage(evaluationNode.get("percentage").asDouble());
                         }
-                        result.setAreasForImprovement(areasForImprovement);
+                        
+                        if (evaluationNode.has("questionsAnalyzed")) {
+                            result.setQuestionsAnalyzed(evaluationNode.get("questionsAnalyzed").asInt());
+                        }
+                        
+                        // Extract question-wise results if available
+                        if (evaluationNode.has("questionWiseResults") && evaluationNode.get("questionWiseResults").isArray()) {
+                            JsonNode questionResults = evaluationNode.get("questionWiseResults");
+                            List<WorksheetEvaluationResponse.QuestionResult> questionResultsList = new ArrayList<>();
+                            
+                            for (JsonNode questionNode : questionResults) {
+                                WorksheetEvaluationResponse.QuestionResult questionResult = new WorksheetEvaluationResponse.QuestionResult();
+                                
+                                if (questionNode.has("questionNumber")) {
+                                    questionResult.setQuestionNumber(questionNode.get("questionNumber").asText());
+                                }
+                                
+                                if (questionNode.has("questionText")) {
+                                    questionResult.setQuestionText(questionNode.get("questionText").asText());
+                                }
+                                
+                                if (questionNode.has("studentAnswer")) {
+                                    questionResult.setStudentAnswer(questionNode.get("studentAnswer").asText());
+                                }
+                                
+                                if (questionNode.has("correctAnswer")) {
+                                    questionResult.setCorrectAnswer(questionNode.get("correctAnswer").asText());
+                                }
+                                
+                                // Handle different field names for scores
+                                if (questionNode.has("pointsAwarded")) {
+                                    questionResult.setPointsAwarded(questionNode.get("pointsAwarded").asDouble());
+                                } else if (questionNode.has("scoreAwarded")) {
+                                    questionResult.setPointsAwarded(questionNode.get("scoreAwarded").asDouble());
+                                } else if (questionNode.has("score")) {
+                                    questionResult.setPointsAwarded(questionNode.get("score").asDouble());
+                                }
+                                
+                                if (questionNode.has("maxPoints")) {
+                                    questionResult.setMaxPoints(questionNode.get("maxPoints").asDouble());
+                                } else if (questionNode.has("maxScore")) {
+                                    questionResult.setMaxPoints(questionNode.get("maxScore").asDouble());
+                                }
+                                
+                                if (questionNode.has("feedback")) {
+                                    questionResult.setFeedback(questionNode.get("feedback").asText());
+                                }
+                                
+                                questionResultsList.add(questionResult);
+                            }
+                            
+                            result.setQuestionWiseResults(questionResultsList);
+                        }
+                        
+                        // Extract other evaluation fields
+                        if (evaluationNode.has("overallFeedback")) {
+                            result.setOverallFeedback(evaluationNode.get("overallFeedback").asText());
+                        }
+                        
+                        if (evaluationNode.has("strengths") && evaluationNode.get("strengths").isArray()) {
+                            List<String> strengths = new ArrayList<>();
+                            for (JsonNode strength : evaluationNode.get("strengths")) {
+                                strengths.add(strength.asText());
+                            }
+                            result.setStrengths(strengths);
+                        }
+                        
+                        if (evaluationNode.has("areasForImprovement") && evaluationNode.get("areasForImprovement").isArray()) {
+                            List<String> areasForImprovement = new ArrayList<>();
+                            for (JsonNode area : evaluationNode.get("areasForImprovement")) {
+                                areasForImprovement.add(area.asText());
+                            }
+                            result.setAreasForImprovement(areasForImprovement);
+                        }
+                        
+                        if (evaluationNode.has("teacherRecommendations")) {
+                            result.setTeacherRecommendations(evaluationNode.get("teacherRecommendations").asText());
+                        }
+                        
+                        logger.info("Successfully extracted JSON data: score={}/{} ({}%)", 
+                            result.getTotalScore(), result.getMaxPossibleScore(), result.getPercentage());
                     }
-                    
-                    if (evaluationNode.has("teacherRecommendations")) {
-                        result.setTeacherRecommendations(evaluationNode.get("teacherRecommendations").asText());
-                    }
-                    
-                    logger.info("Successfully extracted JSON data from evaluation text");
+                } catch (Exception e) {
+                    logger.warn("Failed to parse extracted JSON: {}", e.getMessage());
                 }
             }
         } catch (Exception e) {
@@ -529,11 +589,52 @@ public class WorksheetEvaluationService {
     }
     
     /**
-     * Extract scores from evaluation text using regex patterns
+     * Extract scores from evaluation text
+     * Simplified to directly parse JSON data from the text when possible
      */
     private void extractScoresFromText(String text, WorksheetEvaluationResponse.EvaluationResult result) {
         try {
-            // Look for patterns like "Score: 85/100" or "Total: 85 out of 100"
+            // First try to parse as JSON
+            if (text.contains("\"evaluation\"")) {
+                try {
+                    // Try to extract JSON object from the text
+                    int startIndex = text.indexOf("{");
+                    int endIndex = text.lastIndexOf("}") + 1;
+                    
+                    if (startIndex >= 0 && endIndex > startIndex) {
+                        String jsonStr = text.substring(startIndex, endIndex);
+                        JsonNode rootNode = objectMapper.readTree(jsonStr);
+                        JsonNode evaluationNode = rootNode.get("evaluation");
+                        
+                        if (evaluationNode != null) {
+                            // Direct extraction of fields from JSON
+                            if (evaluationNode.has("totalScore")) {
+                                result.setTotalScore(evaluationNode.get("totalScore").asDouble());
+                            }
+                            
+                            if (evaluationNode.has("maxPossibleScore")) {
+                                result.setMaxPossibleScore(evaluationNode.get("maxPossibleScore").asDouble());
+                            }
+                            
+                            if (evaluationNode.has("percentage")) {
+                                result.setPercentage(evaluationNode.get("percentage").asDouble());
+                            }
+                            
+                            if (evaluationNode.has("questionsAnalyzed")) {
+                                result.setQuestionsAnalyzed(evaluationNode.get("questionsAnalyzed").asInt());
+                            }
+                            
+                            logger.info("Successfully extracted evaluation data from JSON: score={}/{} ({}%)", 
+                                result.getTotalScore(), result.getMaxPossibleScore(), result.getPercentage());
+                            return;
+                        }
+                    }
+                } catch (Exception e) {
+                    logger.debug("Could not parse JSON directly, falling back to regex: {}", e.getMessage());
+                }
+            }
+            
+            // Fallback to regex patterns if JSON parsing fails
             java.util.regex.Pattern scorePattern = java.util.regex.Pattern.compile(
                 "(?i)(?:score|total|marks?)\\s*:?\\s*(\\d+(?:\\.\\d+)?)\\s*(?:out\\s*of|/|\\s+)\\s*(\\d+(?:\\.\\d+)?)"
             );
@@ -547,7 +648,7 @@ public class WorksheetEvaluationService {
                 result.setMaxPossibleScore(maxScore);
                 result.setPercentage(maxScore > 0 ? (score / maxScore) * 100 : 0);
                 
-                logger.info("Extracted scores: {}/{} ({}%)", score, maxScore, result.getPercentage());
+                logger.info("Extracted scores using regex: {}/{} ({}%)", score, maxScore, result.getPercentage());
             }
             
             // Look for number of questions
