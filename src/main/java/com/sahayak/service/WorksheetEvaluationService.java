@@ -787,7 +787,7 @@ public class WorksheetEvaluationService {
         Map<String, Object> requestBody = createGeminiRequestBody(analysisPrompt, base64Document, mimeType);
         
         // Call Gemini 2.5 Pro for analysis
-        String geminiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent";
+        String geminiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
         String urlWithApiKey = geminiUrl + "?key=" + geminiApiKey;
         
         HttpHeaders headers = new HttpHeaders();
