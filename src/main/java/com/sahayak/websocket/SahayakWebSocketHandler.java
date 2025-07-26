@@ -142,6 +142,22 @@ public class SahayakWebSocketHandler implements WebSocketHandler {
                     sendToClient(session, createMessage("connection", "error", "Failed to connect to Kalam Sir"));
                     return null;
                 });
+            } else if ("udaan-prompt-creator".equals(mode)) {
+                // Create Udaan prompt creator session
+                teacherService.createUdaanPromptCreatorSession().thenAccept(teacherSessionId -> {
+                    sessionToTeacherMapping.put(session.getId(), teacherSessionId);
+                    logger.info("Mapped WebSocket session {} to Udaan prompt creator session {}", session.getId(), teacherSessionId);
+                    
+                    // Set up handlers for Udaan prompt creator responses
+                    setupTeacherHandlers(session.getId(), teacherSessionId);
+                    
+                    // Send connection success message to client
+                    sendToClient(session, createMessage("connection", "success", "Connected to Udaan - Future Planner"));
+                }).exceptionally(throwable -> {
+                    logger.error("Failed to create Udaan prompt creator session for WebSocket {}", session.getId(), throwable);
+                    sendToClient(session, createMessage("connection", "error", "Failed to connect to Udaan"));
+                    return null;
+                });
             } else {
                 // Create regular teacher session with optional custom prompt
                 String customPrompt = jsonNode.has("customPrompt") && !jsonNode.get("customPrompt").isNull() 

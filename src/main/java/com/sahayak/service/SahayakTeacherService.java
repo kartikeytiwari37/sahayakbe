@@ -129,6 +129,32 @@ public class SahayakTeacherService {
         });
     }
     
+    public CompletableFuture<String> createUdaanPromptCreatorSession() {
+        String sessionId = UUID.randomUUID().toString();
+        logger.info("Creating Udaan prompt creator session: {}", sessionId);
+        
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                // Create TEXT connection for Udaan prompt creation
+                GeminiLiveWebSocketClient textClient = new GeminiLiveWebSocketClient(
+                    geminiApiUrl, geminiApiKey, objectMapper, eventPublisher
+                );
+                textClient.connectAsync().get();
+                Thread.sleep(500);
+                
+                LiveConfig udaanConfig = createUdaanPromptCreatorConfig();
+                textClient.sendSetupMessage(udaanConfig);
+                textSessions.put(sessionId, textClient);
+                logger.info("Udaan prompt creator session created for: {}", sessionId);
+                
+                return sessionId;
+            } catch (Exception e) {
+                logger.error("Failed to create Udaan prompt creator session", e);
+                throw new RuntimeException("Failed to create Udaan prompt creator session", e);
+            }
+        });
+    }
+    
     private LiveConfig createTeacherConfigWithModality(String modality, String customPrompt) {
         LiveConfig config = new LiveConfig(geminiModel);
         
@@ -209,6 +235,40 @@ public class SahayakTeacherService {
         config.setGenerationConfig(genConfig);
         
         logger.info("Created prompt creator config");
+        return config;
+    }
+    
+    private LiveConfig createUdaanPromptCreatorConfig() {
+        LiveConfig config = new LiveConfig(geminiModel);
+        
+        // Special system instruction for Udaan future planning prompt creation
+        String udaanPromptCreatorInstruction = "You are Udaan, a friendly AI career planner who helps create inspiring future roadmaps for students. " +
+            "You are enthusiastic, motivational, and efficient. " +
+            "\n\nCRITICAL RULES:" +
+            "\n- NEVER repeat the same questions or ask long lists" +
+            "\n- ALWAYS acknowledge what information you already have about the student" +
+            "\n- If they give you student name + age + location + career goal, CREATE THE PROMPT IMMEDIATELY" +
+            "\n- Only ask ONE short follow-up if absolutely necessary for clarity" +
+            "\n- Be inspiring and motivational in your tone" +
+            "\n\nExample:" +
+            "\nUser: 'Priya is 15 years old from Mumbai and wants to become a doctor'" +
+            "\nYou: 'Amazing! Priya from Mumbai with dreams of becoming a doctor at 15 - that's fantastic! Is she currently in 10th grade, and should I focus on NEET preparation or general medical career guidance?'" +
+            "\n[After their answer, create the prompt immediately]" +
+            "\n\nWhen you have enough info (student name, age, location, career goal), respond with:" +
+            "\n'FINAL_PROMPT: [student name] [age] years old from [location] wants to become [career goal]'" +
+            "\n\nExample final prompt: 'FINAL_PROMPT: Priya 15 years old from Mumbai wants to become doctor'" +
+            "\n\nBe efficient and inspiring - students need motivation and clear direction!";
+        
+        LiveConfig.Part instructionPart = new LiveConfig.Part(udaanPromptCreatorInstruction);
+        LiveConfig.SystemInstruction sysInstruction = new LiveConfig.SystemInstruction(Arrays.asList(instructionPart));
+        config.setSystemInstruction(sysInstruction);
+        
+        // Configure for text-only responses
+        LiveConfig.GenerationConfig genConfig = new LiveConfig.GenerationConfig();
+        genConfig.setResponseModalities("text");
+        config.setGenerationConfig(genConfig);
+        
+        logger.info("Created Udaan prompt creator config");
         return config;
     }
     

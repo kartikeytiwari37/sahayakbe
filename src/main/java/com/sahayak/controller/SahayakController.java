@@ -1,11 +1,20 @@
 package com.sahayak.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sahayak.service.SahayakTeacherService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -18,9 +27,11 @@ public class SahayakController {
     private static final Logger logger = LoggerFactory.getLogger(SahayakController.class);
     
     private final SahayakTeacherService teacherService;
+    private final ObjectMapper objectMapper;
     
-    public SahayakController(SahayakTeacherService teacherService) {
+    public SahayakController(SahayakTeacherService teacherService, ObjectMapper objectMapper) {
         this.teacherService = teacherService;
+        this.objectMapper = objectMapper;
     }
     
     @GetMapping("/health")
@@ -267,26 +278,118 @@ public class SahayakController {
     }
     
     @PostMapping("/video/download")
-    public CompletableFuture<ResponseEntity<byte[]>> downloadVideo(
-            @RequestBody Map<String, String> request) {
+    public ResponseEntity<byte[]> downloadVideo(@RequestBody Map<String, String> request) {
+        try {
+            String videoUri = request.get("videoUri");
+            if (videoUri == null || videoUri.trim().isEmpty()) {
+                return ResponseEntity.badRequest().build();
+            }
+
+            byte[] videoData = teacherService.downloadVideo(videoUri).get();
+            
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
+            headers.setContentDispositionFormData("attachment", "educational-video.mp4");
+            
+            return ResponseEntity.ok()
+                .headers(headers)
+                .body(videoData);
+                
+        } catch (Exception e) {
+            logger.error("Error downloading video", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+    
+    // Future Plan Generation API
+    @PostMapping("/future-plan/generate")
+    public ResponseEntity<Map<String, Object>> generateFuturePlan(@RequestBody Map<String, String> request) {
+        try {
+            String text = request.get("text");
+            if (text == null || text.trim().isEmpty()) {
+                Map<String, Object> errorResponse = new HashMap<>();
+                errorResponse.put("success", false);
+                errorResponse.put("message", "Text parameter is required");
+                return ResponseEntity.badRequest().body(errorResponse);
+            }
+
+            logger.info("Generating future plan for text: {}", text);
+            
+            // Call the external future planner API
+            Map<String, Object> futurePlanResponse = callFuturePlannerAPI(text);
+            
+            return ResponseEntity.ok(futurePlanResponse);
+                
+        } catch (Exception e) {
+            logger.error("Error generating future plan", e);
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("message", "Failed to generate future plan: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
+    }
+    
+    private Map<String, Object> callFuturePlannerAPI(String text) throws Exception {
+        // Create HTTP client with SSL handling
+        HttpClient client = createPermissiveHttpClient();
         
-        String videoUri = request.get("videoUri");
-        if (videoUri == null || videoUri.trim().isEmpty()) {
-            return CompletableFuture.completedFuture(ResponseEntity.badRequest().build());
+        // Create request body
+        Map<String, String> requestBody = new HashMap<>();
+        requestBody.put("text", text);
+        String requestJson = objectMapper.writeValueAsString(requestBody);
+        
+        // Make HTTP request to future planner API
+        HttpRequest httpRequest = HttpRequest.newBuilder()
+            .uri(URI.create("https://future-planner-api-1026861423924.us-central1.run.app/generate-plan-from-text"))
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(requestJson))
+            .timeout(Duration.ofMinutes(2)) // 2 minute timeout for this API
+            .build();
+        
+        logger.info("Calling future planner API with text: {}", text);
+        HttpResponse<String> response = client.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+        
+        if (response.statusCode() != 200) {
+            throw new RuntimeException("Future planner API failed. Status: " + response.statusCode() + ", Body: " + response.body());
         }
         
-        logger.info("Downloading video from URI: {}", videoUri);
+        // Parse and return response
+        @SuppressWarnings("unchecked")
+        Map<String, Object> responseMap = objectMapper.readValue(response.body(), Map.class);
+        logger.info("Future plan generated successfully for: {}", text);
         
-        return teacherService.downloadVideo(videoUri)
-            .thenApply(videoData -> {
-                return ResponseEntity.ok()
-                    .header("Content-Type", "video/mp4")
-                    .header("Content-Disposition", "attachment; filename=\"educational-video.mp4\"")
-                    .body(videoData);
-            })
-            .exceptionally(throwable -> {
-                logger.error("Failed to download video from URI: {}", videoUri, throwable);
-                return ResponseEntity.internalServerError().build();
-            });
+        return responseMap;
+    }
+    
+    private HttpClient createPermissiveHttpClient() {
+        try {
+            // Create a trust manager that accepts all certificates (for development only)
+            javax.net.ssl.TrustManager[] trustAllCerts = new javax.net.ssl.TrustManager[] {
+                new javax.net.ssl.X509TrustManager() {
+                    public java.security.cert.X509Certificate[] getAcceptedIssuers() {
+                        return null;
+                    }
+                    public void checkClientTrusted(java.security.cert.X509Certificate[] certs, String authType) {
+                    }
+                    public void checkServerTrusted(java.security.cert.X509Certificate[] certs, String authType) {
+                    }
+                }
+            };
+            
+            javax.net.ssl.SSLContext sslContext = javax.net.ssl.SSLContext.getInstance("SSL");
+            sslContext.init(null, trustAllCerts, new java.security.SecureRandom());
+            
+            return HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(30))
+                .followRedirects(HttpClient.Redirect.ALWAYS)
+                .sslContext(sslContext)
+                .build();
+        } catch (Exception e) {
+            logger.warn("Failed to create permissive HTTP client, using default: {}", e.getMessage());
+            return HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(30))
+                .followRedirects(HttpClient.Redirect.ALWAYS)
+                .build();
+        }
     }
 }
