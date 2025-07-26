@@ -129,6 +129,32 @@ public class SahayakTeacherService {
         });
     }
     
+    public CompletableFuture<String> createUdaanPromptCreatorSession() {
+        String sessionId = UUID.randomUUID().toString();
+        logger.info("Creating Udaan prompt creator session: {}", sessionId);
+        
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                // Create TEXT connection for Udaan prompt creation
+                GeminiLiveWebSocketClient textClient = new GeminiLiveWebSocketClient(
+                    geminiApiUrl, geminiApiKey, objectMapper, eventPublisher
+                );
+                textClient.connectAsync().get();
+                Thread.sleep(500);
+                
+                LiveConfig udaanConfig = createUdaanPromptCreatorConfig();
+                textClient.sendSetupMessage(udaanConfig);
+                textSessions.put(sessionId, textClient);
+                logger.info("Udaan prompt creator session created for: {}", sessionId);
+                
+                return sessionId;
+            } catch (Exception e) {
+                logger.error("Failed to create Udaan prompt creator session", e);
+                throw new RuntimeException("Failed to create Udaan prompt creator session", e);
+            }
+        });
+    }
+    
     private LiveConfig createTeacherConfigWithModality(String modality, String customPrompt) {
         LiveConfig config = new LiveConfig(geminiModel);
         
@@ -209,6 +235,40 @@ public class SahayakTeacherService {
         config.setGenerationConfig(genConfig);
         
         logger.info("Created prompt creator config");
+        return config;
+    }
+    
+    private LiveConfig createUdaanPromptCreatorConfig() {
+        LiveConfig config = new LiveConfig(geminiModel);
+        
+        // Special system instruction for Udaan future planning prompt creation
+        String udaanPromptCreatorInstruction = "You are Udaan, an inspiring AI future planner who helps create motivational career roadmaps for students. " +
+            "You are enthusiastic, encouraging, and focused on gathering key student information efficiently. " +
+            "\n\nCRITICAL RULES:" +
+            "\n- ALWAYS be encouraging and positive about the student's dreams" +
+            "\n- Gather these key details: student name, age, current grade/standard, location, and career goal" +
+            "\n- If they provide basic info, ask for missing details in ONE friendly question" +
+            "\n- Once you have name, age, location, and career goal, CREATE THE PROMPT IMMEDIATELY" +
+            "\n- Be natural, motivational, and conversational" +
+            "\n\nExample:" +
+            "\nUser: 'Priya is 15 years old from Mumbai and wants to become a doctor'" +
+            "\nYou: 'Amazing! Priya has such an inspiring goal! What grade/standard is she currently in? This will help me create the perfect roadmap for her medical journey!'" +
+            "\n[After their answer, create the prompt immediately]" +
+            "\n\nWhen you have enough info (name, age, location, career goal), respond with:" +
+            "\n'FINAL_PROMPT: [Student name] [age] years old from [location] wants to become [career goal]'" +
+            "\n\nExample final prompt: 'FINAL_PROMPT: Priya 15 years old from Mumbai wants to become doctor'" +
+            "\n\nBe efficient and inspiring - students deserve quick, motivational roadmaps!";
+        
+        LiveConfig.Part instructionPart = new LiveConfig.Part(udaanPromptCreatorInstruction);
+        LiveConfig.SystemInstruction sysInstruction = new LiveConfig.SystemInstruction(Arrays.asList(instructionPart));
+        config.setSystemInstruction(sysInstruction);
+        
+        // Configure for text-only responses
+        LiveConfig.GenerationConfig genConfig = new LiveConfig.GenerationConfig();
+        genConfig.setResponseModalities("text");
+        config.setGenerationConfig(genConfig);
+        
+        logger.info("Created Udaan prompt creator config");
         return config;
     }
     
@@ -611,6 +671,45 @@ public class SahayakTeacherService {
             } catch (Exception e) {
                 logger.error("Error downloading video", e);
                 throw new RuntimeException("Failed to download video", e);
+            }
+        });
+    }
+    
+    public CompletableFuture<Map<String, Object>> generateFuturePlan(String text) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                logger.info("Calling external future planner API for text: {}", text);
+                
+                // Create request body for the external API
+                Map<String, String> requestBody = new HashMap<>();
+                requestBody.put("text", text);
+                
+                String requestJson = objectMapper.writeValueAsString(requestBody);
+                
+                // Make HTTP request to the external future planner API
+                HttpRequest httpRequest = HttpRequest.newBuilder()
+                    .uri(URI.create("https://future-planner-api-1026861423924.us-central1.run.app/generate-plan-from-text"))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(requestJson))
+                    .build();
+                
+                HttpClient client = createPermissiveHttpClient();
+                HttpResponse<String> response = client.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+                
+                if (response.statusCode() != 200) {
+                    throw new RuntimeException("Failed to generate future plan. Status: " + response.statusCode() + ", Body: " + response.body());
+                }
+                
+                // Parse response
+                @SuppressWarnings("unchecked")
+                Map<String, Object> responseData = objectMapper.readValue(response.body(), Map.class);
+                
+                logger.info("Future plan generated successfully");
+                return responseData;
+                
+            } catch (Exception e) {
+                logger.error("Error generating future plan", e);
+                throw new RuntimeException("Failed to generate future plan", e);
             }
         });
     }

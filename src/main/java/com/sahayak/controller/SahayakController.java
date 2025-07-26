@@ -289,4 +289,31 @@ public class SahayakController {
                 return ResponseEntity.internalServerError().build();
             });
     }
+    
+    @PostMapping("/future-plan/generate")
+    public CompletableFuture<ResponseEntity<Map<String, Object>>> generateFuturePlan(
+            @RequestBody Map<String, String> request) {
+        
+        String text = request.get("text");
+        if (text == null || text.trim().isEmpty()) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Text cannot be empty");
+            return CompletableFuture.completedFuture(ResponseEntity.badRequest().body(response));
+        }
+        
+        logger.info("Generating future plan for text: {}", text);
+        
+        return teacherService.generateFuturePlan(text)
+            .thenApply(planData -> {
+                return ResponseEntity.ok(planData);
+            })
+            .exceptionally(throwable -> {
+                logger.error("Failed to generate future plan", throwable);
+                Map<String, Object> response = new HashMap<>();
+                response.put("success", false);
+                response.put("message", "Failed to generate future plan: " + throwable.getMessage());
+                return ResponseEntity.internalServerError().body(response);
+            });
+    }
 }
