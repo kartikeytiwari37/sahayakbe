@@ -18,6 +18,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.*;
 import java.util.Base64;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 
 @RestController
 @RequestMapping("/api/exam")
@@ -71,6 +72,81 @@ public class ExamController {
         } catch (Exception e) {
             logger.error("Unexpected error creating exam", e);
             ExamCreationResponse errorResponse = new ExamCreationResponse("error", "Unexpected error: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(errorResponse);
+        }
+    }
+    
+    /**
+     * Endpoint to create an exam based on PDF content and provided parameters
+     * 
+     * @param subject The subject of the exam
+     * @param gradeLevel The grade level of the exam
+     * @param examType The type of exam (e.g., MULTIPLE_CHOICE, TRUE_FALSE)
+     * @param numberOfQuestions The number of questions to generate
+     * @param customPrompt Custom instructions for question generation
+     * @param pdfFile The PDF file containing content for question generation
+     * @return The exam creation response
+     */
+    @PostMapping("/createWithPdf")
+    public ResponseEntity<ExamCreationResponse> createExamWithPdf(
+            @RequestParam("subject") String subject,
+            @RequestParam("gradeLevel") String gradeLevel,
+            @RequestParam("examType") String examType,
+            @RequestParam("numberOfQuestions") int numberOfQuestions,
+            @RequestParam("customPrompt") String customPrompt,
+            @RequestParam("pdfFile") MultipartFile pdfFile,
+            @RequestParam(value = "pageNumber", required = false) Integer pageNumber) {
+        
+        logger.info("Received request to create exam with PDF. Subject: {}, Grade: {}, Type: {}, Questions: {}", 
+                subject, gradeLevel, examType, numberOfQuestions);
+        
+        try {
+            // First, summarize the PDF to extract its content
+            // If pageNumber is provided, extract content from that specific page
+            // Otherwise, extract content from all pages (pageNumber = 0)
+            ResponseEntity<String> pdfSummaryResponse = summarizePdf(
+                    pdfFile, 
+                    pageNumber != null ? pageNumber : 0, 
+                    "Extract all text content for generating exam questions");
+            
+            if (pdfSummaryResponse.getStatusCode().isError()) {
+                logger.error("Error extracting content from PDF: {}", pdfSummaryResponse.getBody());
+                ExamCreationResponse errorResponse = new ExamCreationResponse("error", 
+                        "Failed to extract content from PDF: " + pdfSummaryResponse.getBody());
+                return ResponseEntity.badRequest().body(errorResponse);
+            }
+            
+            String pdfContent = pdfSummaryResponse.getBody();
+            logger.info("Successfully extracted content from PDF, length: {} characters", pdfContent.length());
+            
+            // Create a combined prompt with the custom prompt and PDF content
+            String combinedPrompt = customPrompt + "\n\nContent from PDF:\n" + pdfContent;
+            
+            // Create the exam creation request
+            ExamCreationRequest request = new ExamCreationRequest(
+                    subject, gradeLevel, examType, numberOfQuestions, combinedPrompt);
+            
+            logger.info("Created exam request with PDF content");
+            
+            // Use the existing service to create the exam
+            ExamCreationResponse response = examCreationService.createExam(request);
+            
+            if ("error".equals(response.getStatus())) {
+                logger.error("Error creating exam with PDF: {}", response.getError());
+                return ResponseEntity.badRequest().body(response);
+            }
+            
+            logger.info("Exam with PDF content created successfully");
+            return ResponseEntity.ok(response);
+        } catch (HttpMessageNotReadableException e) {
+            logger.error("Error parsing request parameters", e);
+            ExamCreationResponse errorResponse = new ExamCreationResponse("error", 
+                    "Invalid request format: " + e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        } catch (Exception e) {
+            logger.error("Unexpected error creating exam with PDF", e);
+            ExamCreationResponse errorResponse = new ExamCreationResponse("error", 
+                    "Unexpected error: " + e.getMessage());
             return ResponseEntity.internalServerError().body(errorResponse);
         }
     }
@@ -344,22 +420,27 @@ public class ExamController {
     }
     
     /**
-     * Endpoint to summarize a specific page from a PDF file using Gemini API
+     * Endpoint to summarize content from a PDF file using Gemini API
      * 
      * @param pdfFile The PDF file to summarize
-     * @param pageNumber The page number to summarize (default is 1)
+     * @param pageNumber The page number to summarize (default is 1, 0 means all pages)
      * @param prompt Custom prompt for summarization (optional)
-     * @return Summary of the specified page
+     * @return Summary of the specified page or the entire PDF
      */
     @PostMapping("/summarize-pdf")
     public ResponseEntity<String> summarizePdf(
             @RequestParam("pdfFile") MultipartFile pdfFile,
-            @RequestParam(value = "pageNumber", defaultValue = "1") int pageNumber,
+            @RequestParam(value = "pageNumber", defaultValue = "0") int pageNumber,
             @RequestParam(value = "prompt", required = false) String prompt) {
         
         try {
-            logger.info("Received request to summarize PDF page {}. File size: {} bytes", 
-                    pageNumber, pdfFile.getSize());
+            if (pageNumber == 0) {
+                logger.info("Received request to summarize all pages of PDF. File size: {} bytes", 
+                        pdfFile.getSize());
+            } else {
+                logger.info("Received request to summarize PDF page {}. File size: {} bytes", 
+                        pageNumber, pdfFile.getSize());
+            }
             
             // Check if the PDF file is valid
             byte[] pdfBytes = pdfFile.getBytes();
@@ -372,10 +453,19 @@ public class ExamController {
             String base64Pdf = Base64.getEncoder().encodeToString(pdfBytes);
             logger.info("PDF file converted to base64 successfully");
             
-            // Create the prompt
-            String summarizationPrompt = prompt != null && !prompt.isEmpty() 
-                    ? prompt 
-                    : "summarize page " + pageNumber + " from this report";
+            // Create the prompt based on whether we're summarizing a specific page or the entire document
+            String summarizationPrompt;
+            if (pageNumber > 0) {
+                // Summarize specific page
+                summarizationPrompt = prompt != null && !prompt.isEmpty() 
+                        ? prompt + " (focus on page " + pageNumber + ")"
+                        : "Extract and summarize the content from page " + pageNumber + " of this PDF document";
+            } else {
+                // Summarize all pages
+                summarizationPrompt = prompt != null && !prompt.isEmpty() 
+                        ? prompt + " (include content from all pages)"
+                        : "Extract and summarize the content from all pages of this PDF document";
+            }
             
             // Create the request body for Gemini API
             Map<String, Object> requestBody = new HashMap<>();
@@ -409,7 +499,12 @@ public class ExamController {
             
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
             
-            logger.info("Calling Gemini API to summarize PDF page {}", pageNumber);
+            if (pageNumber > 0) {
+                logger.info("Calling Gemini API to summarize PDF page {}", pageNumber);
+            } else {
+                logger.info("Calling Gemini API to summarize all pages of the PDF");
+            }
+            
             RestTemplate restTemplate = new RestTemplate();
             ResponseEntity<Map> response = restTemplate.exchange(
                     urlWithApiKey, 
