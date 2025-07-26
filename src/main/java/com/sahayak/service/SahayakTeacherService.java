@@ -447,37 +447,51 @@ public class SahayakTeacherService {
                 
                 String contextString = contextBuilder.toString();
                 
-                // Create structured prompt for Veo 3.0 video generation
+                // Create structured prompt for Veo 3.0 video generation with proper endings and animation preference
                 String promptText = "Analyze the teaching context and conversation to create a structured educational video prompt for Veo 3.0.\n\n" +
+                    "IMPORTANT GUIDELINES:\n" +
+                    "- PREFER ANIMATED EXPLANATIONS over live-action for better concept visualization\n" +
+                    "- ENSURE PROPER VIDEO ENDING with clear conclusion and fade-out\n" +
+                    "- CREATE SMOOTH TRANSITIONS between sequences\n" +
+                    "- FOCUS ON VISUAL STORYTELLING for educational concepts\n\n" +
                     "Generate a detailed video prompt using this EXACT format:\n\n" +
                     "prompt_name: \"[Educational Topic] - [Brief Description]\"\n" +
-                    "base_style: \"educational, clear, engaging, 4K\"\n" +
+                    "base_style: \"animated educational, clear, engaging, colorful, 4K, smooth transitions\"\n" +
                     "aspect_ratio: \"16:9\"\n" +
-                    "setting_description: \"[Describe the educational setting - classroom, lab, outdoor, etc.]\"\n" +
-                    "camera_setup: \"[Camera angle and movement - fixed wide shot, close-up, pan, etc.]\"\n" +
+                    "setting_description: \"[Animated educational environment - prefer cartoon-style classroom, animated lab, colorful diagrams, etc.]\"\n" +
+                    "camera_setup: \"[Smooth camera movements - gentle zoom, pan, or fixed shots with animated elements]\"\n" +
                     "key_elements:\n" +
-                    "- \"[Main educational element 1]\"\n" +
-                    "- \"[Main educational element 2]\"\n" +
+                    "- \"[Main animated educational element 1]\"\n" +
+                    "- \"[Main animated educational element 2]\"\n" +
+                    "- \"[Visual conclusion element]\"\n" +
                     "educational_elements:\n" +
-                    "- \"[Learning visual 1]\"\n" +
-                    "- \"[Learning visual 2]\"\n" +
-                    "- \"[Learning visual 3]\"\n" +
-                    "negative_prompts: [\"no distracting elements\", \"no inappropriate content\", \"clear audio\"]\n" +
+                    "- \"[Animated learning visual 1]\"\n" +
+                    "- \"[Animated learning visual 2]\"\n" +
+                    "- \"[Animated learning visual 3]\"\n" +
+                    "- \"[Summary animation or diagram]\"\n" +
+                    "negative_prompts: [\"no abrupt endings\", \"no distracting elements\", \"no inappropriate content\", \"no sudden cuts\", \"clear audio\"]\n" +
                     "timeline:\n" +
                     "- sequence: 1\n" +
                     "  timestamp: \"00:00-00:02\"\n" +
-                    "  action: \"[Opening scene description]\"\n" +
-                    "  audio: \"[Narration or sound description]\"\n" +
+                    "  action: \"[Animated opening scene with title and introduction]\"\n" +
+                    "  audio: \"[Welcoming narration introducing the topic]\"\n" +
+                    "  transition: \"smooth fade-in\"\n" +
                     "- sequence: 2\n" +
-                    "  timestamp: \"00:02-00:06\"\n" +
-                    "  action: \"[Main teaching demonstration]\"\n" +
-                    "  audio: \"[Educational explanation]\"\n" +
+                    "  timestamp: \"00:02-00:05\"\n" +
+                    "  action: \"[Main animated teaching demonstration with visual elements]\"\n" +
+                    "  audio: \"[Clear educational explanation with enthusiasm]\"\n" +
+                    "  transition: \"gentle zoom or pan\"\n" +
                     "- sequence: 3\n" +
-                    "  timestamp: \"00:06-00:08\"\n" +
-                    "  action: \"[Conclusion or summary visual]\"\n" +
-                    "  audio: \"[Closing narration]\"\n\n" +
+                    "  timestamp: \"00:05-00:07\"\n" +
+                    "  action: \"[Additional animated examples or details]\"\n" +
+                    "  audio: \"[Supporting explanation with examples]\"\n" +
+                    "  transition: \"smooth transition to conclusion\"\n" +
+                    "- sequence: 4\n" +
+                    "  timestamp: \"00:07-00:08\"\n" +
+                    "  action: \"[Animated conclusion with summary visual and proper fade-out ending]\"\n" +
+                    "  audio: \"[Concluding narration with 'Thank you for learning with us!' or similar]\"\n" +
                     "CONTEXT TO ANALYZE:\n" + contextString + "\n\n" +
-                    "Generate the structured video prompt now:";
+                    "Generate the structured video prompt now with emphasis on animated educational content and proper conclusion:";
                 
                 // Create request body for Gemini API
                 Map<String, Object> requestBody = new HashMap<>();
