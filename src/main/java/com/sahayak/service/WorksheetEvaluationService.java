@@ -155,7 +155,7 @@ public class WorksheetEvaluationService {
      */
     private String buildPromptGenerationRequest(WorksheetEvaluationRequest request) {
         StringBuilder promptBuilder = new StringBuilder();
-        
+
         promptBuilder.append("Create a comprehensive evaluation prompt for analyzing a student's worksheet. ");
         promptBuilder.append("The prompt should instruct an AI to evaluate the worksheet document and provide structured feedback. ");
         promptBuilder.append("\n\nContext:\n");
@@ -166,15 +166,23 @@ public class WorksheetEvaluationService {
         promptBuilder.append("\n- Subject: ").append(request.getSubject());
         promptBuilder.append("\n- Worksheet: ").append(request.getWorksheetTitle());
         promptBuilder.append("\n- Evaluation Criteria: ").append(request.getEvaluationCriteria());
-        
-        if (request.getAdditionalInstructions() != null && !request.getAdditionalInstructions().trim().isEmpty()) {
-            promptBuilder.append("\n- Additional Instructions: ").append(request.getAdditionalInstructions());
-        }
-        
-        if (request.getTeacherNotes() != null && !request.getTeacherNotes().trim().isEmpty()) {
-            promptBuilder.append("\n- Teacher Notes: ").append(request.getTeacherNotes());
-        }
-        
+
+
+        promptBuilder
+                .append("\n- Instruct the AI to strictly follow the Output Format as : ")
+                .append("\"evaluation\": {\n" + //
+                        "        \"totalScore\": 0.0,\n" + //
+                        "        \"maxPossibleScore\": 100.0,\n" + //
+                        "        \"percentage\": 0.0,\n" + //
+                        "        \"questionsAnalyzed\": 0,\n" + //
+                        "        \"questionWiseResults\": [],\n" + //
+                        "        \"overallFeedback\": \"\",\n" + //
+                        "        \"strengths\": [],\n" + //
+                        "        \"areasForImprovement\": [],\n" + //
+                        "        \"teacherRecommendations\": \"\"\n" + //
+                        "    }");
+
+
         promptBuilder.append("\n\nThe generated prompt should instruct the AI to:\n");
         promptBuilder.append("1. Analyze the worksheet document to identify all questions and their point values\n");
         promptBuilder.append("2. Identify the student's answers for each question\n");
@@ -185,7 +193,7 @@ public class WorksheetEvaluationService {
         promptBuilder.append("7. Identify strengths and areas for improvement\n");
         promptBuilder.append("8. Provide teacher recommendations\n");
         promptBuilder.append("\nReturn only the evaluation prompt, ready to be used with a document.");
-        
+
         return promptBuilder.toString();
     }
     
