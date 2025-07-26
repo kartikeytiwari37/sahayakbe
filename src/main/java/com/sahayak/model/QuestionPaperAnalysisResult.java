@@ -132,7 +132,7 @@ public class QuestionPaperAnalysisResult {
     public static class Question {
         
         @JsonProperty("questionNumber")
-        private int questionNumber;
+        private String questionNumber;
         
         @JsonProperty("questionText")
         private String questionText;
@@ -162,7 +162,7 @@ public class QuestionPaperAnalysisResult {
         public Question() {}
         
         // Constructor with basic fields
-        public Question(int questionNumber, String questionText, String questionType, double marks) {
+        public Question(String questionNumber, String questionText, String questionType, double marks) {
             this.questionNumber = questionNumber;
             this.questionText = questionText;
             this.questionType = questionType;
@@ -170,11 +170,11 @@ public class QuestionPaperAnalysisResult {
         }
         
         // Getters and Setters
-        public int getQuestionNumber() {
+        public String getQuestionNumber() {
             return questionNumber;
         }
         
-        public void setQuestionNumber(int questionNumber) {
+        public void setQuestionNumber(String questionNumber) {
             this.questionNumber = questionNumber;
         }
         

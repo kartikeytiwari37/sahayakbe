@@ -79,8 +79,9 @@ public class WorksheetEvaluationService {
                 new org.springframework.http.client.SimpleClientHttpRequestFactory();
             
             // For HTTPS connections, we need to use HttpsURLConnection
-            factory.setConnectTimeout(30000);
-            factory.setReadTimeout(60000);
+            // Increased timeouts for document processing
+            factory.setConnectTimeout(60000);  // 60 seconds connect timeout
+            factory.setReadTimeout(300000);    // 5 minutes read timeout for document analysis
             
             RestTemplate restTemplate = new RestTemplate(factory);
             
@@ -492,7 +493,7 @@ public class WorksheetEvaluationService {
         promptBuilder.append("  \"instructions\": \"string\",\n");
         promptBuilder.append("  \"questions\": [\n");
         promptBuilder.append("    {\n");
-        promptBuilder.append("      \"questionNumber\": number,\n");
+        promptBuilder.append("      \"questionNumber\": \"string\",\n");
         promptBuilder.append("      \"questionText\": \"string\",\n");
         promptBuilder.append("      \"questionType\": \"MCQ|SHORT_ANSWER|ESSAY|TRUE_FALSE|FILL_BLANK\",\n");
         promptBuilder.append("      \"marks\": number,\n");
@@ -600,6 +601,9 @@ public class WorksheetEvaluationService {
         ResponseEntity<Map> response = restTemplate.exchange(urlWithApiKey, HttpMethod.POST, entity, Map.class);
         
         String analysisText = extractTextFromGeminiResponse(response.getBody());
+        
+        // Log the complete LLM output for debugging
+        logger.info("Complete LLM output from question paper analysis: {}", analysisText);
         
         // Parse the analysis response into structured format
         QuestionPaperAnalysisResult result = parseQuestionPaperAnalysis(analysisText);

@@ -271,7 +271,7 @@ public class WorksheetEvaluationResponse {
     public static class QuestionResult {
         
         @JsonProperty("questionNumber")
-        private int questionNumber;
+        private String questionNumber;
         
         @JsonProperty("questionText")
         private String questionText;
@@ -308,11 +308,11 @@ public class WorksheetEvaluationResponse {
         public QuestionResult() {}
         
         // Getters and Setters
-        public int getQuestionNumber() {
+        public String getQuestionNumber() {
             return questionNumber;
         }
         
-        public void setQuestionNumber(int questionNumber) {
+        public void setQuestionNumber(String questionNumber) {
             this.questionNumber = questionNumber;
         }
         
