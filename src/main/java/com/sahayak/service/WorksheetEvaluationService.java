@@ -458,7 +458,7 @@ public class WorksheetEvaluationService {
                             WorksheetEvaluationResponse.QuestionResult questionResult = new WorksheetEvaluationResponse.QuestionResult();
                             
                             if (questionNode.has("questionNumber")) {
-                                questionResult.setQuestionNumber(questionNode.get("questionNumber").asInt());
+                                questionResult.setQuestionNumber(questionNode.get("questionNumber").asText());
                             }
                             
                             if (questionNode.has("questionText")) {
@@ -738,9 +738,39 @@ public class WorksheetEvaluationService {
         promptBuilder.append("6. Identify overall strengths and areas for improvement\n");
         promptBuilder.append("7. Provide constructive teacher recommendations\n\n");
         
-        promptBuilder.append("IMPORTANT: Return your evaluation in a structured format that can be parsed. ");
-        promptBuilder.append("Include total score, percentage, question-wise breakdown with feedback, ");
-        promptBuilder.append("overall assessment, strengths, areas for improvement, and teacher recommendations.");
+        promptBuilder
+                .append("CRITICAL: You must strictly follow the Output Format as JSON with the following structure:\n")
+                .append("{\n")
+                .append("  \"evaluation\": {\n")
+                .append("    \"totalScore\": 0.0,\n")
+                .append("    \"maxPossibleScore\": 100.0,\n")
+                .append("    \"percentage\": 0.0,\n")
+                .append("    \"questionsAnalyzed\": 0,\n")
+                .append("    \"questionWiseResults\": [\n")
+                .append("      {\n")
+                .append("        \"questionNumber\": \"1\",\n")
+                .append("        \"questionText\": \"Question text here\",\n")
+                .append("        \"studentAnswer\": \"Student's answer\",\n")
+                .append("        \"correctAnswer\": \"Expected answer\",\n")
+                .append("        \"pointsAwarded\": 0.0,\n")
+                .append("        \"maxPoints\": 0.0,\n")
+                .append("        \"feedback\": \"Detailed feedback for this question\"\n")
+                .append("      }\n")
+                .append("    ],\n")
+                .append("    \"overallFeedback\": \"Overall assessment of the student's performance\",\n")
+                .append("    \"strengths\": [\"List of student's strengths\"],\n")
+                .append("    \"areasForImprovement\": [\"Areas where student can improve\"],\n")
+                .append("    \"teacherRecommendations\": \"Specific recommendations for the teacher\"\n")
+                .append("  }\n")
+                .append("}\n\n");
+        
+        promptBuilder.append("IMPORTANT: \n");
+        promptBuilder.append("- Return ONLY the JSON response in the exact format specified above\n");
+        promptBuilder.append("- Do not include any additional text, explanations, or markdown formatting\n");
+        promptBuilder.append("- Ensure all numeric values are properly formatted as numbers, not strings\n");
+        promptBuilder.append("- Include detailed feedback for each question in the questionWiseResults array\n");
+        promptBuilder.append("- Calculate accurate totalScore, maxPossibleScore, and percentage values\n");
+        promptBuilder.append("- Provide meaningful strengths, areas for improvement, and teacher recommendations");
         
         return promptBuilder.toString();
     }
