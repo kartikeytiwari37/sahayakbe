@@ -290,21 +290,30 @@ public class WorksheetEvaluationService {
         
         try {
             // Try to extract structured information from the text
-            // This is a basic implementation - you might want to enhance this based on actual Gemini responses
+            // First, try to extract JSON data if present
+            extractJsonFromText(evaluationText, result);
             
-            // Set default values
-            result.setTotalScore(0.0);
-            result.setMaxPossibleScore(100.0);
-            result.setPercentage(0.0);
-            result.setQuestionsAnalyzed(0);
-            result.setQuestionWiseResults(new ArrayList<>());
-            result.setOverallFeedback(evaluationText);
-            result.setStrengths(new ArrayList<>());
-            result.setAreasForImprovement(new ArrayList<>());
-            result.setTeacherRecommendations("Please review the detailed feedback above.");
+            // If JSON extraction didn't work, try regex-based extraction
+            if (result.getTotalScore() == 0.0) {
+                extractScoresFromText(evaluationText, result);
+            }
             
-            // Try to extract numerical scores if present in the text
-            extractScoresFromText(evaluationText, result);
+            // Set default values for any fields that weren't extracted
+            if (result.getQuestionWiseResults() == null) {
+                result.setQuestionWiseResults(new ArrayList<>());
+            }
+            if (result.getStrengths() == null) {
+                result.setStrengths(new ArrayList<>());
+            }
+            if (result.getAreasForImprovement() == null) {
+                result.setAreasForImprovement(new ArrayList<>());
+            }
+            if (result.getOverallFeedback() == null || result.getOverallFeedback().isEmpty()) {
+                result.setOverallFeedback(evaluationText);
+            }
+            if (result.getTeacherRecommendations() == null || result.getTeacherRecommendations().isEmpty()) {
+                result.setTeacherRecommendations("Please review the detailed feedback above.");
+            }
             
             logger.info("Evaluation response parsed successfully");
             
@@ -314,6 +323,156 @@ public class WorksheetEvaluationService {
         }
         
         return result;
+    }
+    
+    /**
+     * Extract JSON data from evaluation text
+     */
+    private void extractJsonFromText(String text, WorksheetEvaluationResponse.EvaluationResult result) {
+        try {
+            // First, check if the text contains a JSON code block (```json ... ```)
+            String codeBlockPattern = "```json\\s*\\{([\\s\\S]*?)\\}\\s*```";
+            java.util.regex.Pattern codeBlockRegex = java.util.regex.Pattern.compile(codeBlockPattern);
+            java.util.regex.Matcher codeBlockMatcher = codeBlockRegex.matcher(text);
+            
+            String jsonStr = null;
+            
+            if (codeBlockMatcher.find()) {
+                // Extract the JSON from the code block
+                jsonStr = "{" + codeBlockMatcher.group(1) + "}";
+                logger.info("Found JSON code block in evaluation text");
+            } else {
+                // If no code block, try to find JSON directly in the text
+                String jsonPattern = "\"evaluation\"\\s*:\\s*\\{";
+                java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(jsonPattern);
+                java.util.regex.Matcher matcher = pattern.matcher(text);
+                
+                if (matcher.find()) {
+                    // Extract the JSON object
+                    int startIndex = matcher.start();
+                    
+                    // Find the matching closing brace
+                    int openBraces = 0;
+                    int closeBraces = 0;
+                    int endIndex = startIndex;
+                    
+                    for (int i = startIndex; i < text.length(); i++) {
+                        if (text.charAt(i) == '{') {
+                            openBraces++;
+                        } else if (text.charAt(i) == '}') {
+                            closeBraces++;
+                            if (closeBraces == openBraces) {
+                                endIndex = i + 1;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Extract the JSON substring
+                    jsonStr = "{" + text.substring(startIndex, endIndex);
+                    logger.info("Found JSON directly in evaluation text");
+                }
+            }
+            
+            if (jsonStr != null) {
+                // Parse the JSON
+                JsonNode rootNode = objectMapper.readTree(jsonStr);
+                JsonNode evaluationNode = rootNode.get("evaluation");
+                
+                if (evaluationNode != null) {
+                    // Extract values from JSON
+                    if (evaluationNode.has("totalScore")) {
+                        result.setTotalScore(evaluationNode.get("totalScore").asDouble());
+                    }
+                    
+                    if (evaluationNode.has("maxPossibleScore")) {
+                        result.setMaxPossibleScore(evaluationNode.get("maxPossibleScore").asDouble());
+                    }
+                    
+                    if (evaluationNode.has("percentage")) {
+                        result.setPercentage(evaluationNode.get("percentage").asDouble());
+                    }
+                    
+                    if (evaluationNode.has("questionsAnalyzed")) {
+                        result.setQuestionsAnalyzed(evaluationNode.get("questionsAnalyzed").asInt());
+                    }
+                    
+                    if (evaluationNode.has("questionWiseResults") && evaluationNode.get("questionWiseResults").isArray()) {
+                        JsonNode questionResults = evaluationNode.get("questionWiseResults");
+                        List<WorksheetEvaluationResponse.QuestionResult> questionResultsList = new ArrayList<>();
+                        
+                        for (JsonNode questionNode : questionResults) {
+                            WorksheetEvaluationResponse.QuestionResult questionResult = new WorksheetEvaluationResponse.QuestionResult();
+                            
+                            if (questionNode.has("questionNumber")) {
+                                questionResult.setQuestionNumber(questionNode.get("questionNumber").asInt());
+                            }
+                            
+                            if (questionNode.has("questionText")) {
+                                questionResult.setQuestionText(questionNode.get("questionText").asText());
+                            }
+                            
+                            if (questionNode.has("studentAnswer")) {
+                                questionResult.setStudentAnswer(questionNode.get("studentAnswer").asText());
+                            }
+                            
+                            if (questionNode.has("correctAnswer")) {
+                                questionResult.setCorrectAnswer(questionNode.get("correctAnswer").asText());
+                            }
+                            
+                            // Handle different field names for scores
+                            if (questionNode.has("scoreAwarded")) {
+                                questionResult.setPointsAwarded(questionNode.get("scoreAwarded").asDouble());
+                            } else if (questionNode.has("score")) {
+                                questionResult.setPointsAwarded(questionNode.get("score").asDouble());
+                            }
+                            
+                            if (questionNode.has("maxPoints")) {
+                                questionResult.setMaxPoints(questionNode.get("maxPoints").asDouble());
+                            } else if (questionNode.has("maxScore")) {
+                                questionResult.setMaxPoints(questionNode.get("maxScore").asDouble());
+                            }
+                            
+                            if (questionNode.has("feedback")) {
+                                questionResult.setFeedback(questionNode.get("feedback").asText());
+                            }
+                            
+                            questionResultsList.add(questionResult);
+                        }
+                        
+                        result.setQuestionWiseResults(questionResultsList);
+                    }
+                    
+                    if (evaluationNode.has("overallFeedback")) {
+                        result.setOverallFeedback(evaluationNode.get("overallFeedback").asText());
+                    }
+                    
+                    if (evaluationNode.has("strengths") && evaluationNode.get("strengths").isArray()) {
+                        List<String> strengths = new ArrayList<>();
+                        for (JsonNode strength : evaluationNode.get("strengths")) {
+                            strengths.add(strength.asText());
+                        }
+                        result.setStrengths(strengths);
+                    }
+                    
+                    if (evaluationNode.has("areasForImprovement") && evaluationNode.get("areasForImprovement").isArray()) {
+                        List<String> areasForImprovement = new ArrayList<>();
+                        for (JsonNode area : evaluationNode.get("areasForImprovement")) {
+                            areasForImprovement.add(area.asText());
+                        }
+                        result.setAreasForImprovement(areasForImprovement);
+                    }
+                    
+                    if (evaluationNode.has("teacherRecommendations")) {
+                        result.setTeacherRecommendations(evaluationNode.get("teacherRecommendations").asText());
+                    }
+                    
+                    logger.info("Successfully extracted JSON data from evaluation text");
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to extract JSON data from evaluation text: {}", e.getMessage());
+        }
     }
     
     /**
