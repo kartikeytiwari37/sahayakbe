@@ -44,7 +44,57 @@ public class WorksheetEvaluationService {
     
     public WorksheetEvaluationService(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
-        this.restTemplate = new RestTemplate();
+        this.restTemplate = createPermissiveRestTemplate();
+    }
+    
+    /**
+     * Create a RestTemplate with permissive SSL configuration for development
+     */
+    private RestTemplate createPermissiveRestTemplate() {
+        try {
+            // Create a trust manager that accepts all certificates (for development only)
+            javax.net.ssl.TrustManager[] trustAllCerts = new javax.net.ssl.TrustManager[] {
+                new javax.net.ssl.X509TrustManager() {
+                    public java.security.cert.X509Certificate[] getAcceptedIssuers() {
+                        return null;
+                    }
+                    public void checkClientTrusted(java.security.cert.X509Certificate[] certs, String authType) {
+                    }
+                    public void checkServerTrusted(java.security.cert.X509Certificate[] certs, String authType) {
+                    }
+                }
+            };
+            
+            javax.net.ssl.SSLContext sslContext = javax.net.ssl.SSLContext.getInstance("SSL");
+            sslContext.init(null, trustAllCerts, new java.security.SecureRandom());
+            
+            // Create SSL socket factory
+            javax.net.ssl.SSLSocketFactory sslSocketFactory = sslContext.getSocketFactory();
+            
+            // Create hostname verifier that accepts all hostnames
+            javax.net.ssl.HostnameVerifier hostnameVerifier = (hostname, session) -> true;
+            
+            // Configure HTTP client factory with SSL settings
+            org.springframework.http.client.SimpleClientHttpRequestFactory factory = 
+                new org.springframework.http.client.SimpleClientHttpRequestFactory();
+            
+            // For HTTPS connections, we need to use HttpsURLConnection
+            factory.setConnectTimeout(30000);
+            factory.setReadTimeout(60000);
+            
+            RestTemplate restTemplate = new RestTemplate(factory);
+            
+            // Set default SSL context for HttpsURLConnection
+            javax.net.ssl.HttpsURLConnection.setDefaultSSLSocketFactory(sslSocketFactory);
+            javax.net.ssl.HttpsURLConnection.setDefaultHostnameVerifier(hostnameVerifier);
+            
+            logger.info("Created RestTemplate with permissive SSL configuration for development");
+            return restTemplate;
+            
+        } catch (Exception e) {
+            logger.warn("Failed to create permissive RestTemplate, using default: {}", e.getMessage());
+            return new RestTemplate();
+        }
     }
     
     /**
