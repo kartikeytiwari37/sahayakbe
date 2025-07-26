@@ -56,7 +56,22 @@ public class WorksheetEvaluationResponse {
         this.status = status;
         this.error = error;
     }
-    
+
+    @Override
+    public String toString() {
+        return "WorksheetEvaluationResponse{" +
+                "status='" + status + '\'' +
+                ", studentName='" + studentName + '\'' +
+                ", studentId='" + studentId + '\'' +
+                ", worksheetTitle='" + worksheetTitle + '\'' +
+                ", subject='" + subject + '\'' +
+                ", evaluation=" + evaluation +
+                ", processingTime='" + processingTime + '\'' +
+                ", timestamp=" + timestamp +
+                ", error='" + error + '\'' +
+                '}';
+    }
+
     // Getters and Setters
     public String getStatus() {
         return status;
@@ -159,7 +174,22 @@ public class WorksheetEvaluationResponse {
         
         @JsonProperty("teacherRecommendations")
         private String teacherRecommendations;
-        
+
+        @Override
+        public String toString() {
+            return "EvaluationResult{" +
+                    "totalScore=" + totalScore +
+                    ", maxPossibleScore=" + maxPossibleScore +
+                    ", percentage=" + percentage +
+                    ", questionsAnalyzed=" + questionsAnalyzed +
+                    ", questionWiseResults=" + questionWiseResults +
+                    ", overallFeedback='" + overallFeedback + '\'' +
+                    ", strengths=" + strengths +
+                    ", areasForImprovement=" + areasForImprovement +
+                    ", teacherRecommendations='" + teacherRecommendations + '\'' +
+                    '}';
+        }
+
         // Default constructor
         public EvaluationResult() {}
         
@@ -260,7 +290,20 @@ public class WorksheetEvaluationResponse {
         
         @JsonProperty("feedback")
         private String feedback;
-        
+
+        @Override
+        public String toString() {
+            return "QuestionResult{" +
+                    "questionNumber=" + questionNumber +
+                    ", questionText='" + questionText + '\'' +
+                    ", studentAnswer='" + studentAnswer + '\'' +
+                    ", correctAnswer='" + correctAnswer + '\'' +
+                    ", pointsAwarded=" + pointsAwarded +
+                    ", maxPoints=" + maxPoints +
+                    ", feedback='" + feedback + '\'' +
+                    '}';
+        }
+
         // Default constructor
         public QuestionResult() {}
         

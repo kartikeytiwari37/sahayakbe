@@ -23,7 +23,7 @@ public class WorksheetEvaluationService {
     @Value("${gemini.api.key}")
     private String geminiApiKey;
     
-    @Value("${gemini.api.model:models/gemini-2.0-flash-exp}")
+    @Value("${gemini.api.model:gemini-2.5-flash}")
     private String geminiFlashModel;
     
     private final ObjectMapper objectMapper;
@@ -81,8 +81,8 @@ public class WorksheetEvaluationService {
                 long endTime = System.currentTimeMillis();
                 response.setProcessingTime(String.format("%.1fs", (endTime - startTime) / 1000.0));
                 
-                logger.info("Worksheet evaluation completed successfully for student: {}", 
-                           request.getStudentName());
+                logger.info("Worksheet evaluation completed successfully for student: {} , response : {}",
+                           request.getStudentName(), response);
                 
                 return response;
                 
