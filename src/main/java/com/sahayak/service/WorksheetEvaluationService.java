@@ -25,7 +25,7 @@ public class WorksheetEvaluationService {
     @Value("${gemini.api.key}")
     private String geminiApiKey;
     
-    @Value("${gemini.api.model:gemini-2.5-flash}")
+    @Value("${gemini.api.model.v1:gemini-2.5-flash}")
     private String geminiFlashModel;
     
     private final ObjectMapper objectMapper;
