@@ -25,7 +25,7 @@ public class ExamCreationService {
     @Value("${gemini.api.key}")
     private String geminiApiKey;
 
-    @Value("${gemini.api.model}")
+    @Value("${gemini.api.model.v1}")
     private String geminiModel;
 
     private final RestTemplate restTemplate;
