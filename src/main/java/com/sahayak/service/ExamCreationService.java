@@ -22,10 +22,10 @@ public class ExamCreationService {
 
     private static final Logger logger = LoggerFactory.getLogger(ExamCreationService.class);
 
-    @Value("${gemini.api.key}")
+    @Value("${exam.creation.gemini.api.key}")
     private String geminiApiKey;
 
-    @Value("${gemini.api.model}")
+    @Value("${exam.creation.gemini.api.model}")
     private String geminiModel;
 
     private final RestTemplate restTemplate;

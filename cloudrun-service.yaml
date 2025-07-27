@@ -25,6 +25,8 @@ spec:
         env:
         - name: GEMINI_API_KEY
           value: "YOUR_GEMINI_API_KEY"
+        - name: EXAM_CREATION_GEMINI_API_KEY
+          value: "YOUR_EXAM_CREATION_GEMINI_API_KEY"
         resources:
           limits:
             cpu: 1000m
