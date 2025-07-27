@@ -181,8 +181,8 @@ Used for real-time interactions and streaming responses:
 - **Gemini 2.5 Flash**: Generates detailed feedback with strengths and areas for improvement
 
 #### Exam Creation
-- **Gemini 2.0 Flash**: Creates exam questions based on subject, grade level, and exam type
-- **Gemini 2.0 Flash**: Generates multiple-choice, true/false, essay, and short answer questions
+- **Gemini 2.5 Flash**: Creates exam questions based on subject, grade level, and exam type
+- **Gemini 2.5 Flash**: Generates multiple-choice, true/false, essay, and short answer questions
 - **Gemini 2.5 Pro**: Processes PDF content to create context-relevant exam questions
 
 #### Teacher Assistant

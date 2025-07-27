@@ -63,9 +63,10 @@ gcloud auth configure-docker
    PROJECT_ID="your-google-cloud-project-id"
    ```
 
-3. **Set your Gemini API key**:
+3. **Set your Gemini API keys**:
    ```bash
    export GEMINI_API_KEY="your-gemini-api-key-here"
+   export EXAM_CREATION_GEMINI_API_KEY="your-exam-creation-gemini-api-key-here"
    ```
 
 4. **Run the deployment script**:
@@ -97,7 +98,7 @@ gcloud auth configure-docker
      --max-instances 10 \
      --min-instances 0 \
      --port 8080 \
-     --set-env-vars "GEMINI_API_KEY=your-gemini-api-key-here" \
+     --set-env-vars "GEMINI_API_KEY=your-gemini-api-key-here,EXAM_CREATION_GEMINI_API_KEY=your-exam-creation-gemini-api-key-here" \
      --timeout 300
    ```
 
@@ -121,7 +122,8 @@ The application uses the following environment variables:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `PORT` | Server port | 8080 |
-| `GEMINI_API_KEY` | Google Gemini API key | Required |
+| `GEMINI_API_KEY` | Google Gemini API key for general services | Required |
+| `EXAM_CREATION_GEMINI_API_KEY` | Google Gemini API key for exam creation service | Required |
 
 ## Health Checks
 

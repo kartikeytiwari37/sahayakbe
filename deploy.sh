@@ -41,7 +41,7 @@ if ! command -v docker &> /dev/null; then
 fi
 
 echo -e "${YELLOW}📋 Pre-deployment checklist:${NC}"
-echo "1. Make sure you have set your GEMINI_API_KEY"
+echo "1. Make sure you have set your GEMINI_API_KEY and EXAM_CREATION_GEMINI_API_KEY"
 echo "2. Update PROJECT_ID in this script"
 echo "3. Ensure you're authenticated with gcloud"
 echo ""
@@ -73,7 +73,7 @@ gcloud run deploy $SERVICE_NAME \
     --max-instances 10 \
     --min-instances 0 \
     --port 8080 \
-    --set-env-vars "GEMINI_API_KEY=${GEMINI_API_KEY}" \
+    --set-env-vars "GEMINI_API_KEY=${GEMINI_API_KEY},EXAM_CREATION_GEMINI_API_KEY=${EXAM_CREATION_GEMINI_API_KEY}" \
     --timeout 300
 
 echo -e "${GREEN}✅ Deployment completed successfully!${NC}"
